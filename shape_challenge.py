@@ -21,6 +21,7 @@ class ShapeType(Enum):
     SQUARE = "kare"
     CIRCLE = "daire"
     RECTANGLE = "dikdortgen"
+    INFINITY = "sonsuzluk"
 
 
 class ChallengeState(Enum):
@@ -296,6 +297,17 @@ class ShapeChallenge:
                 angle = 2 * math.pi * i / 64
                 points.append((int(cx + size * math.cos(angle)), int(cy + size * math.sin(angle))))
             return points
+        elif shape_type == ShapeType.INFINITY:
+            # Lemniscate (sonsuzluk isareti)
+            points = []
+            a = size * 1.3
+            for i in range(80):
+                t = 2 * math.pi * i / 80
+                denom = 1 + math.sin(t) ** 2
+                px = int(cx + a * math.cos(t) / denom)
+                py = int(cy + a * math.sin(t) * math.cos(t) / denom)
+                points.append((px, py))
+            return points
         return []
 
     def _calculate_accuracy(self) -> float:
@@ -303,8 +315,9 @@ class ShapeChallenge:
         if len(self.user_points) < 5 or len(self.target_points) < 3:
             return 0.0
 
+        is_dense = self.current_shape in (ShapeType.CIRCLE, ShapeType.INFINITY)
         target_dense = self._densify_contour(
-            self.target_points, is_circle=(self.current_shape == ShapeType.CIRCLE)
+            self.target_points, is_circle=is_dense
         )
         target_arr = np.array(target_dense, dtype=np.float32)
 

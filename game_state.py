@@ -59,8 +59,33 @@ class GameState:
         "Gizemli Orman": "Agaclarin fisildadigi, her adimda bitkilerin yer degistirdigi ve sislerin arasinda perilerin goruldugu buyulu bir orman.",
         "Kaotik Uzay": "Fizik kurallarinin islemedigi, yildiz tozlarinin arasinda devasa gozlerin sizi izledigi boyutsal bir bosluk.",
         "Ruhlar Cehennemi": "Lav nehirlerinin aktigi, gunahkar ruhlarin cigliklarinin yankilandigi ve zebani lordlarinin hukmettigi bir diyar.",
-        "Sonsuz Col": "Gunesin hic batmadigi, kumlarin altinda devasa solucanlarin dolastigi ve seraplarin insanlari delirttigi bir sahra."
+        "Sonsuz Col": "Gunesin hic batmadigi, kumlarin altinda devasa solucanlarin dolastigi ve seraplarin insanlari delirttigi bir sahra.",
+        "Batan Sehir": "Denizin altina gomulmus, su altinda nefes alinabilen ama yaratiklarin pusuya yattigi antik bir sehir.",
+        "Ejderha Yuvasi": "Volkanik bir dagin icinde, altin yiginlarinin arasinda uyuyan ejderhalarin korundugu efsanevi yuva.",
+        "Buzul Sarayi": "Her seyin buzdan yapildigi, buz devilerin hukmettigi dondurucu bir saray.",
+        "Hayalet Kasabasi": "Yasayan kimsenin kalmadigi, geceleyin hayaletlerin sokaklarda dolastigi terk edilmis bir kasaba.",
+        "Lanetli Kale": "Karanlik buyulerle korunan, icinde vampir lordun hukum surdugu gotik bir kale.",
     }
+
+    CLASS_DATA = {
+        "Savasci": {"hp": 120, "max_hp": 120, "gold": 30},
+        "Buyucu": {"hp": 80, "max_hp": 80, "gold": 60},
+        "Okcu": {"hp": 100, "max_hp": 100, "gold": 40},
+        "Hirsiz": {"hp": 90, "max_hp": 90, "gold": 80},
+    }
+
+    WEAPON_DATA = {
+        "Savasci": ["Celik Kilic", "Savas Baltasi", "Mizrak", "Cift El Kilici"],
+        "Buyucu": ["Ates Asasi", "Buz Asasi", "Yildirim Degnek", "Karanlik Grimoire"],
+        "Okcu": ["Uzun Yay", "Arbalete", "Cift Kisa Yay", "Zehirli Ok Seti"],
+        "Hirsiz": ["Gizli Hancer", "Zehirli Bicak", "Garoz Seti", "Duman Bombalari"],
+    }
+
+    POSSIBLE_LOCATIONS = [
+        "Karanlik Magara", "Gizemli Orman", "Kaotik Uzay", "Ruhlar Cehennemi",
+        "Sonsuz Col", "Batan Sehir", "Ejderha Yuvasi", "Buzul Sarayi",
+        "Hayalet Kasabasi", "Lanetli Kale",
+    ]
 
     def __init__(self, character: Optional[Character] = None):
         """
@@ -86,7 +111,8 @@ class GameState:
         self.is_game_over: bool = False
         self.game_over_reason: str = ""
         self.is_waiting_for_ai: bool = False
-        self.is_theme_selection: bool = True
+        self.is_startup: bool = True
+        self.startup_step: int = 0  # 0=class, 1=weapon, 2=destination
         self.current_theme: str = ""
         self.current_feedback: str = ""
 
@@ -298,6 +324,46 @@ class GameState:
             amount: Değişim miktarı (pozitif = iyileşme, negatif = hasar).
         """
         self.character.hp = max(0, min(self.character.max_hp, self.character.hp + amount))
+
+    def apply_class_choice(self, class_name: str) -> None:
+        """Karakter sinifini uygular."""
+        data = self.CLASS_DATA.get(class_name, {})
+        self.character.char_class = class_name
+        self.character.hp = data.get("hp", 100)
+        self.character.max_hp = data.get("max_hp", 100)
+        self.character.gold = data.get("gold", 50)
+
+    def apply_weapon_choice(self, weapon: str) -> None:
+        """Baslangic silahini uygular."""
+        self.character.inventory = [weapon, "Mesale"]
+
+    def get_weapons_for_class(self, class_name: str) -> list:
+        """Sinifa gore silah seceneklerini dondurur."""
+        return self.WEAPON_DATA.get(class_name, ["Pasli Kilic", "Tahta Sopa", "Tas", "Yumruk"])
+
+    def get_random_locations(self) -> list:
+        """10 lokasyondan rastgele 4 tanesini dondurur."""
+        import random
+        return random.sample(self.POSSIBLE_LOCATIONS, 4)
+
+    def try_random_healing(self) -> Optional[str]:
+        """Savas/baslangic disi modlarda rastgele can dolumu."""
+        import random
+        if self.current_mode == "savas" or self.is_startup:
+            return None
+        if self.character.hp >= self.character.max_hp:
+            return None
+        if random.random() < 0.25:
+            heal = random.randint(5, 15)
+            self.modify_hp(heal)
+            messages = [
+                f"Yolda bir sifa kaynagi buldun! +{heal} HP",
+                f"Gizemli bir isik canini doldurdu! +{heal} HP",
+                f"Yaralarinin bir kismi iyilesti! +{heal} HP",
+                f"Dostca bir ruh sana sifa verdi! +{heal} HP",
+            ]
+            return random.choice(messages)
+        return None
 
     def add_to_inventory(self, item: str) -> None:
         """

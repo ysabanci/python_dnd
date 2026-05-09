@@ -57,8 +57,13 @@ class HandTracker:
                 "Lütfen kameranızın bağlı olduğundan emin olun."
             )
 
+        # Kamera cozunurlugunu 1280x720'ye zorla (Windows'ta varsayilan 640x480 cok kucuk)
+        self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1280)
+        self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)
+
         self.frame_width = int(self.cap.get(cv2.CAP_PROP_FRAME_WIDTH))
         self.frame_height = int(self.cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+        print(f"[*] Kamera cozunurlugu: {self.frame_width}x{self.frame_height}")
 
         # ----- MediaPipe HandLandmarker Kurulumu -----
         model_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "hand_landmarker.task")

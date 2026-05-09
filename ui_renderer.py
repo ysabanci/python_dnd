@@ -122,7 +122,10 @@ class GameUI:
         feedback = sanitize_text(feedback)
 
         # Baslik - moda gore degisir
-        if mode == "savas":
+        if mode == "baslangic":
+            title = "-- BASLANGIC --"
+            title_color = (50, 200, 255)  # Altin/sari
+        elif mode == "savas":
             title = "-- SAVAS --"
             title_color = (60, 60, 255)  # Kirmizi (BGR)
         elif mode == "diyalog":

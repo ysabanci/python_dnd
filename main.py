@@ -26,7 +26,8 @@ class DnDGame:
     PHASE_NORMAL = "normal"
     PHASE_SHAPE_CHALLENGE = "shape_challenge"
 
-    SHAPE_TYPES = [ShapeType.TRIANGLE, ShapeType.SQUARE, ShapeType.CIRCLE, ShapeType.RECTANGLE]
+    SHAPE_TYPES = [ShapeType.TRIANGLE, ShapeType.SQUARE, ShapeType.CIRCLE,
+                   ShapeType.RECTANGLE, ShapeType.INFINITY]
 
     def __init__(self):
         # ----- Modülleri Başlat -----
@@ -49,20 +50,17 @@ class DnDGame:
         self.current_phase = self.PHASE_NORMAL
         self._pending_combat_choice = ""
 
-        # ----- Açılış: Tema Seçimi -----
-        print("[*] Tema secimi bekleniyor...")
-        self.state.is_theme_selection = True
-        self.state.current_story = "Kaderini sec! Yolculugun nerede baslasin?"
-        self.state.current_options = {
-            "sol_ust": "Karanlik Magara",
-            "sag_ust": "Gizemli Orman",
-            "sol_alt": "Kaotik Uzay",
-            "sag_alt": "Ruhlar Cehennemi"
-        }
+        # ----- Acilis: Karakter Olusturma -----
+        print("[*] Karakter olusturma bekleniyor...")
+        self._init_startup()
 
     def run(self) -> None:
         """Ana oyun döngüsü."""
-        cv2.namedWindow(self.WINDOW_NAME, cv2.WINDOW_AUTOSIZE)
+        cv2.namedWindow(self.WINDOW_NAME, cv2.WINDOW_NORMAL)
+        # Windows 11'de kucuk pencere sorununu cozmek icin minimum boyut ayarla
+        win_w = max(self.tracker.frame_width, 960)
+        win_h = max(self.tracker.frame_height, 720)
+        cv2.resizeWindow(self.WINDOW_NAME, win_w, win_h)
 
         try:
             while True:
@@ -127,8 +125,8 @@ class DnDGame:
                     choice_text = self.state.current_options.get(qid, "...")
                     print(f"[>] Seçim: {qid} -> {choice_text}")
 
-                    if self.state.is_theme_selection:
-                        self._handle_theme_selection(choice_text)
+                    if self.state.is_startup:
+                        self._handle_startup_choice(choice_text)
                     elif self.state.current_mode == "savas":
                         self._start_shape_challenge(choice_text)
                     else:
@@ -136,9 +134,11 @@ class DnDGame:
 
                 # 7) Arayüzü çiz
                 frame = self.ui.draw_overlay(frame, 0.35)
+                # Baslangic modunda "baslangic" mode'u goster
+                display_mode = "baslangic" if self.state.is_startup else self.state.current_mode
                 frame = self.ui.draw_story_text(frame, self.state.current_story,
                                                 self.state.current_feedback,
-                                                self.state.current_mode)
+                                                display_mode)
                 frame = self.ui.draw_hud(frame, self.state.character.hp, self.state.character.max_hp,
                                          self.state.character.gold, self.state.turn_count,
                                          self.state.current_location, self.state.current_mode,
@@ -165,21 +165,65 @@ class DnDGame:
     #  OZEL METODLAR                                                      #
     # ------------------------------------------------------------------ #
 
-    def _handle_theme_selection(self, choice_text: str) -> None:
-        """Tema secimi yapildiginda hikayeyi baslatir."""
-        self.state.current_theme = choice_text
-        self.state.is_theme_selection = False
-        self.state.add_user_choice(f"Tema secildi: {choice_text}")
+    def _init_startup(self) -> None:
+        """Baslangic asamasini hazirlar."""
+        self.state.is_startup = True
+        self.state.startup_step = 0
+        self.state.current_mode = "kesif"
+        self.state.current_story = "Kahramanini olustur! Sinifini sec."
+        self.state.current_options = {
+            "sol_ust": "Savasci",
+            "sag_ust": "Buyucu",
+            "sol_alt": "Okcu",
+            "sag_alt": "Hirsiz"
+        }
 
-        self.state.is_waiting_for_ai = True
+    def _handle_startup_choice(self, choice_text: str) -> None:
+        """Baslangic asamasinda secim yapar (class -> weapon -> destination)."""
+        step = self.state.startup_step
         self.tracker.reset_selection()
 
-        history = self.state.get_message_history()
-        prompt = (f"Oyun basladi! Secilen tema: {choice_text}. "
-                  f"{self.state.get_character_summary()}. "
-                  f"Buna uygun cok kisa bir acilis hikayesi ver ve ilk aksiyonlari sun.")
-        history.append({"role": "user", "content": prompt})
-        self.ai.request_story(history)
+        if step == 0:
+            # Sinif secildi
+            self.state.apply_class_choice(choice_text)
+            weapons = self.state.get_weapons_for_class(choice_text)
+            self.state.current_story = f"{choice_text} sinifini sectin! Simdi ilk silahini sec."
+            self.state.current_options = {
+                "sol_ust": weapons[0], "sag_ust": weapons[1],
+                "sol_alt": weapons[2], "sag_alt": weapons[3],
+            }
+            self.state.startup_step = 1
+            print(f"[>] Sinif secildi: {choice_text}")
+
+        elif step == 1:
+            # Silah secildi
+            self.state.apply_weapon_choice(choice_text)
+            locations = self.state.get_random_locations()
+            self.state.current_story = f"{choice_text} silahini sectin! Nereye gitmek istersin?"
+            self.state.current_options = {
+                "sol_ust": locations[0], "sag_ust": locations[1],
+                "sol_alt": locations[2], "sag_alt": locations[3],
+            }
+            self.state.startup_step = 2
+            print(f"[>] Silah secildi: {choice_text}")
+
+        elif step == 2:
+            # Lokasyon secildi -> oyunu baslat
+            self.state.current_theme = choice_text
+            self.state.is_startup = False
+            self.state.current_mode = "kesif"
+            self.state.add_user_choice(f"Tema secildi: {choice_text}")
+
+            self.state.is_waiting_for_ai = True
+            history = self.state.get_message_history()
+            prompt = (
+                f"Oyun basladi! Secilen tema/lokasyon: {choice_text}. "
+                f"{self.state.get_character_summary()}. "
+                f"Buna uygun cok kisa bir acilis hikayesi ver ve ilk aksiyonlari sun."
+            )
+            history.append({"role": "user", "content": prompt})
+            self.ai.request_story(history)
+            print(f"[>] Lokasyon secildi: {choice_text} -> Oyun basliyor!")
 
     def _handle_normal_choice(self, choice_text: str) -> None:
         """Normal oyun gidisatinda secim yapar."""
@@ -297,6 +341,12 @@ class DnDGame:
                 self.state.update_from_ai_response(response)
                 self.state.add_ai_response(str(response))
                 self.state.is_waiting_for_ai = False
+
+                # Savas/baslangic disinda rastgele can dolumu
+                heal_msg = self.state.try_random_healing()
+                if heal_msg:
+                    self.state.current_feedback = heal_msg
+                    print(f"[+] {heal_msg}")
             elif error:
                 print(f"[!] AI hatası: {error}")
                 self.state.is_waiting_for_ai = False
@@ -305,14 +355,7 @@ class DnDGame:
         """Oyunu yeniden başlatır."""
         print("[*] Oyun yeniden başlatılıyor...")
         self.state.reset()
-        self.state.is_theme_selection = True
-        self.state.current_story = "Kaderini sec! Yolculugun nerede baslasin?"
-        self.state.current_options = {
-            "sol_ust": "Karanlik Magara",
-            "sag_ust": "Gizemli Orman",
-            "sol_alt": "Kaotik Uzay",
-            "sag_alt": "Ruhlar Cehennemi"
-        }
+        self._init_startup()
         self.current_phase = self.PHASE_NORMAL
         self.shape_challenge.reset()
 

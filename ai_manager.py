@@ -44,10 +44,21 @@ class AdventureAI:
     def request_story_sync(self, message_history: List[Dict[str, str]]) -> Dict[str, Any]:
         """Senkron hikaye isteği (blocking)."""
         try:
-            response = self.client.chat.completions.create(
-                model=self.model, messages=message_history, max_tokens=self.max_tokens, temperature=0.8,
-                response_format={"type": "json_object"}
-            )
+            # Yeni modeller (o1, o3, gpt-5 vb.) max_completion_tokens bekliyor
+            params = {
+                "model": self.model,
+                "messages": message_history,
+                "response_format": {"type": "json_object"}
+            }
+            
+            if self.model.startswith(("o1", "o3", "gpt-5")):
+                params["max_completion_tokens"] = self.max_tokens
+                # o1/o3 modelleri temperature=0.8 desteklemeyebilir (sadece 1.0)
+            else:
+                params["max_tokens"] = self.max_tokens
+                params["temperature"] = 0.8
+                
+            response = self.client.chat.completions.create(**params)
             content = response.choices[0].message.content.strip()
             return self._parse_response(content)
         except Exception as e:
@@ -85,10 +96,19 @@ class AdventureAI:
 
     def _api_call_worker(self, message_history: List[Dict[str, str]], callback: Optional[Callable]) -> None:
         try:
-            response = self.client.chat.completions.create(
-                model=self.model, messages=message_history, max_tokens=self.max_tokens, temperature=0.8,
-                response_format={"type": "json_object"}
-            )
+            params = {
+                "model": self.model,
+                "messages": message_history,
+                "response_format": {"type": "json_object"}
+            }
+            
+            if self.model.startswith(("o1", "o3", "gpt-5")):
+                params["max_completion_tokens"] = self.max_tokens
+            else:
+                params["max_tokens"] = self.max_tokens
+                params["temperature"] = 0.8
+
+            response = self.client.chat.completions.create(**params)
             content = response.choices[0].message.content.strip()
             parsed = self._parse_response(content)
             with self._lock:
