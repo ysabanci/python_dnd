@@ -136,7 +136,9 @@ class DnDGame:
 
                 # 7) Arayüzü çiz
                 frame = self.ui.draw_overlay(frame, 0.35)
-                frame = self.ui.draw_story_text(frame, self.state.current_story, self.state.current_feedback)
+                frame = self.ui.draw_story_text(frame, self.state.current_story,
+                                                self.state.current_feedback,
+                                                self.state.current_mode)
                 frame = self.ui.draw_hud(frame, self.state.character.hp, self.state.character.max_hp,
                                          self.state.character.gold, self.state.turn_count, self.state.current_location)
                 frame = self.ui.draw_buttons(frame, self.state.current_options, hover_quadrant, progress)
@@ -213,13 +215,33 @@ class DnDGame:
 
         cv2.imshow(self.WINDOW_NAME, frame)
 
-        # Challenge bitti mi?
-        if not self.shape_challenge.is_active():
+        # Challenge tamamlandi mi? (is_done = sonuc ekrani gosterildi ve IDLE'a dondu)
+        if self.shape_challenge.is_done():
             accuracy, action = self.shape_challenge.get_result()
-            if accuracy > 0:
-                print(f"[>] Sekil sonucu: %{accuracy:.0f} dogruluk - {action}")
-                self._send_combat_result(accuracy, action)
+            print(f"[>] Sekil sonucu: %{accuracy:.0f} dogruluk - {action}")
+
+            # Basarisiz cizimde can azalt
+            if accuracy < 40:
+                damage = random.randint(10, 25)
+                self.state.modify_hp(-damage)
+                self.state.current_feedback = f"Basarisiz hamle! -{damage} HP"
+                print(f"[!] Basarisiz cizim! -{damage} HP (kalan: {self.state.character.hp})")
+            elif accuracy < 70:
+                damage = random.randint(3, 10)
+                self.state.modify_hp(-damage)
+                self.state.current_feedback = f"Kismi basari! -{damage} HP"
+                print(f"[!] Kismi basari! -{damage} HP (kalan: {self.state.character.hp})")
+
+            # HP 0'a dustuyse oyun bitsin
+            if self.state.character.hp <= 0:
+                self.state.is_game_over = True
+                self.state.game_over_reason = "Savas sirasinda yenildin!"
+                self.current_phase = self.PHASE_NORMAL
                 self.shape_challenge.reset()
+                return
+
+            self._send_combat_result(accuracy, action)
+            self.shape_challenge.reset()
 
     def _send_combat_result(self, accuracy: float, action: str) -> None:
         """Savas sonucunu AI'a gonderir."""

@@ -115,17 +115,27 @@ class GameUI:
         cv2.rectangle(overlay, (0, 0), (self.w, self.h), self.COLOR_BG_OVERLAY, -1)
         return cv2.addWeighted(overlay, alpha, frame, 1 - alpha, 0)
 
-    def draw_story_text(self, frame: np.ndarray, story: str, feedback: str = "") -> np.ndarray:
+    def draw_story_text(self, frame: np.ndarray, story: str, feedback: str = "",
+                         mode: str = "kesif") -> np.ndarray:
         """Hikaye metnini ve (varsa) feedback'i text-wrapping ile cizer."""
         story = sanitize_text(story)
         feedback = sanitize_text(feedback)
 
-        # Baslik
-        title = "-- MACERA --"
+        # Baslik - moda gore degisir
+        if mode == "savas":
+            title = "-- SAVAS --"
+            title_color = (60, 60, 255)  # Kirmizi (BGR)
+        elif mode == "diyalog":
+            title = "-- DIYALOG --"
+            title_color = (100, 255, 200)  # Yesil
+        else:
+            title = "-- MACERA --"
+            title_color = self.COLOR_TITLE
+
         (tw, _), _ = cv2.getTextSize(title, self.FONT_BOLD, self.FONT_SCALE_TITLE, 2)
         title_x = (self.w - tw) // 2
         cv2.putText(frame, title, (title_x, 42), self.FONT_BOLD,
-                    self.FONT_SCALE_TITLE, self.COLOR_TITLE, 2)
+                    self.FONT_SCALE_TITLE, title_color, 2)
 
         # Hikaye metni - satir kaydirma
         max_width = self.w - 50

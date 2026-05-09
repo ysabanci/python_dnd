@@ -61,6 +61,7 @@ class ShapeChallenge:
         self.countdown_start: float = 0.0
         self.accuracy: float = 0.0
         self.combat_action: str = ""
+        self._challenge_completed: bool = False
 
     def start_challenge(self, shape_type: ShapeType, action: str = "") -> None:
         """Yeni bir sekil cizme challenge'i baslatir."""
@@ -99,6 +100,7 @@ class ShapeChallenge:
         elif self.state == ChallengeState.RESULT:
             if now - self.result_time >= self.RESULT_DISPLAY_TIME:
                 self.state = ChallengeState.IDLE
+                self._challenge_completed = True
             return None
 
         return None
@@ -108,8 +110,8 @@ class ShapeChallenge:
         return self.state in (ChallengeState.COUNTDOWN, ChallengeState.DRAWING, ChallengeState.RESULT)
 
     def is_done(self) -> bool:
-        """Challenge IDLE'a dondu ve sonuc var mi?"""
-        return self.state == ChallengeState.IDLE and self.accuracy > 0
+        """Challenge tamamlandi mi (sonuc ekrani gosterildi ve IDLE'a dondu)?"""
+        return self.state == ChallengeState.IDLE and self._challenge_completed
 
     def get_remaining_time(self) -> float:
         """Kalan cizim suresi."""
@@ -136,6 +138,7 @@ class ShapeChallenge:
         self.user_points = []
         self.accuracy = 0.0
         self.combat_action = ""
+        self._challenge_completed = False
 
     # ------------------------------------------------------------------ #
     #  CIZIM METODLARI                                                    #

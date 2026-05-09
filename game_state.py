@@ -187,12 +187,28 @@ class GameState:
         if self.pending_combat_result:
             acc = self.pending_combat_result.get("accuracy", 0)
             action = self.pending_combat_result.get("action", "")
-            if acc >= 70:
-                prompt += f"ONEMLI: Oyuncu '{action}' hamlesini %{acc:.0f} dogrulukla BASARIYLA gerceklestirdi. Hamle tam etkili olsun. "
-            elif acc >= 40:
-                prompt += f"ONEMLI: Oyuncu '{action}' hamlesini %{acc:.0f} dogrulukla KISMI BASARIYLA gerceklestirdi. Hamle yarim etkili olsun. "
+
+            # Savunma farki: basarili savunma hasari azaltir
+            if action.lower() in ("savun", "savunma"):
+                if acc >= 70:
+                    prompt += f"ONEMLI: Oyuncu SAVUNMA yapti ve %{acc:.0f} dogrulukla BASARILI oldu. Hasar COKK az olsun (hp_degisim -3 ile -5 arasi). "
+                elif acc >= 40:
+                    prompt += f"ONEMLI: Oyuncu SAVUNMA yapti ama %{acc:.0f} dogrulukla KISMI BASARILI oldu. Hasar az olsun (hp_degisim -5 ile -10 arasi). "
+                else:
+                    prompt += f"ONEMLI: Oyuncu SAVUNMA yapti ama %{acc:.0f} dogrulukla BASARISIZ oldu. Normal hasar ver (hp_degisim -10 ile -20 arasi). "
+            elif action.lower() in ("kac", "kacis"):
+                if acc >= 70:
+                    prompt += f"ONEMLI: Oyuncu KACMAYI denedi ve %{acc:.0f} dogrulukla BASARILI oldu. Kacis BASARILI! mod='kesif' yap, hp_degisim=0. "
+                else:
+                    prompt += f"ONEMLI: Oyuncu KACMAYI denedi ama %{acc:.0f} dogrulukla BASARISIZ oldu. Kacamadi ve ekstra hasar aldi! hp_degisim -15 ile -25 arasi. mod='savas' kalsin. "
             else:
-                prompt += f"ONEMLI: Oyuncu '{action}' hamlesini %{acc:.0f} dogrulukla BASARISIZ gerceklestirdi. Hamle iska gecsin veya cok az etkili olsun. "
+                # Saldir / Buyu
+                if acc >= 70:
+                    prompt += f"ONEMLI: Oyuncu '{action}' hamlesini %{acc:.0f} dogrulukla BASARIYLA gerceklestirdi. Hamle tam etkili olsun. Ama dusman da saldirsin (hp_degisim -5 ile -15 arasi). "
+                elif acc >= 40:
+                    prompt += f"ONEMLI: Oyuncu '{action}' hamlesini %{acc:.0f} dogrulukla KISMI BASARIYLA gerceklestirdi. Hamle yarim etkili olsun. Dusman saldirsin (hp_degisim -10 ile -20 arasi). "
+                else:
+                    prompt += f"ONEMLI: Oyuncu '{action}' hamlesini %{acc:.0f} dogrulukla BASARISIZ gerceklestirdi. Hamle iska gecti. Dusman guclu saldirsin (hp_degisim -15 ile -25 arasi). "
             self.pending_combat_result = None
         else:
             cycle = self.turn_count % 8
@@ -320,7 +336,14 @@ class GameState:
             "7. altin_degisim: Altin degisimi. Odul/harcama durumunda kullan.\n"
             "8. feedback: Oyuncunun son eyleminin kisa sonucu (ornegin 'Canin 10 azaldi.' veya '15 altin kazandin.').\n"
             "9. Oyunu dinamik yonet: bazi turlarda savas, bazi turlarda kesif, bazi turlarda diyalog olsun. Monoton olma.\n"
-            "10. hp_degisim ve altin_degisim DAIMA sayi olmali (0, -10, +20 gibi). Bos birakma."
+            "10. hp_degisim ve altin_degisim DAIMA sayi olmali (0, -10, +20 gibi). Bos birakma.\n"
+            "11. SAVAS KURALLARI (COK ONEMLI):\n"
+            "   - Savas modunda dusman HER TUR saldirsin. hp_degisim NEGATIF olmali (-5 ile -25 arasi).\n"
+            "   - Oyuncu 'Savun' secerse hasar AZALSIN (hp_degisim -3 ile -8 arasi). Savunma hasari azaltir.\n"
+            "   - Oyuncu 'Saldir' secerse dusmana hasar verir ama kendisi de hasar alir.\n"
+            "   - Oyuncu 'Kac' secerse %50 sans ile kacabilir (basariliysa mod='kesif' yap), basarisizsa ekstra hasar.\n"
+            "   - Oyuncu 'Buyu' secerse guclu saldiri ama HP maliyeti vardir.\n"
+            "   - Savas tehlikeli olmali! Oyuncu savunma yapmazsa cok hasar alsin."
         )
 
         self._message_history.append({
