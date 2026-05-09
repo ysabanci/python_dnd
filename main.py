@@ -22,6 +22,7 @@ from ai_manager import AdventureAI
 from ui_renderer import GameUI
 from shape_challenge import ShapeChallenge, ShapeType
 from fist_challenge import FistChallenge
+from music_manager import MusicManager
 
 
 class DnDGame:
@@ -67,6 +68,9 @@ class DnDGame:
         print("[*] Yumruk challenge modulu hazirlaniyor...")
         self.fist_challenge = FistChallenge(self.tracker.frame_width, self.tracker.frame_height)
 
+        print("[*] Muzik sistemi hazirlaniyor...")
+        self.music = MusicManager()
+
         # ----- Oyun Fazı -----
         self.current_phase = self.PHASE_NORMAL
         self._pending_combat_choice = ""
@@ -82,6 +86,9 @@ class DnDGame:
         # ----- Basarili savunma bayraği -----
         self._defense_blocked: bool = False
         self._defense_partial: bool = False
+
+        # ----- Muzik: son bilinen mod (gecis tespiti icin) -----
+        self._last_music_mode: str = ""
 
         # ----- Acilis: Karakter Olusturma -----
         print("[*] Karakter olusturma bekleniyor...")
@@ -206,6 +213,7 @@ class DnDGame:
 
         finally:
             self.tracker.release()
+            self.music.cleanup()
             cv2.destroyAllWindows()
             print("[*] Oyun kapatıldı.")
 
@@ -242,6 +250,9 @@ class DnDGame:
             }
             self.state.startup_step = 1
             print(f"[>] Sinif secildi: {choice_text}")
+
+            # Sinif muzigini baslat
+            self.music.play_class_music(choice_text)
 
         elif step == 1:
             # Silah secildi
@@ -678,6 +689,15 @@ class DnDGame:
                 self.state.add_ai_response(str(response))
                 self.state.is_waiting_for_ai = False
 
+                # Muzik modu gecisi: savas <-> normal
+                current_mode = self.state.current_mode
+                if current_mode != self._last_music_mode:
+                    if current_mode == "savas":
+                        self.music.play_battle_music()
+                    elif self._last_music_mode == "savas":
+                        self.music.resume_class_music()
+                    self._last_music_mode = current_mode
+
                 # Savas/baslangic disinda rastgele can dolumu
                 heal_msg = self.state.try_random_healing()
                 if heal_msg:
@@ -696,6 +716,8 @@ class DnDGame:
         self.shape_challenge.reset()
         self.fist_challenge.reset()
         self._extra_turn_active = False
+        self._last_music_mode = ""
+        self.music.stop()
 
 
 def main():
