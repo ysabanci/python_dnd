@@ -109,6 +109,15 @@ class GameUI:
             "sag_alt": (right_x, bottom_y, right_x + btn_w, bottom_y + btn_h),
         }
 
+        # Layout hesaplama icin sabitler
+        self._layout_margin = margin
+        self._layout_gap = gap
+        self._btn_area_top = btn_area_top
+        self._btn_area_bottom = btn_area_bottom
+
+        # Dinamik buton bolgeleri (draw_buttons tarafindan guncellenir)
+        self._active_button_regions = dict(self.button_regions)
+
     def draw_overlay(self, frame: np.ndarray, alpha: float = 0.4) -> np.ndarray:
         """Yari-seffaf koyu overlay cizer."""
         overlay = frame.copy()
@@ -198,10 +207,14 @@ class GameUI:
             "sag_alt": (200, 80, 200),
         }
 
-        for qid, (x1, y1, x2, y2) in self.button_regions.items():
+        # Dinamik layout hesapla
+        layout = self._compute_button_layout(options)
+        self._active_button_regions = layout
+
+        for qid, (x1, y1, x2, y2) in layout.items():
             text = sanitize_text(options.get(qid, ""))
-            # Bos secenekleri atla (2 veya 3 secenek modunda)
-            if not text or text == "":
+            # Bos secenekleri atla
+            if not text:
                 continue
             btn_w = x2 - x1
             btn_h = y2 - y1
@@ -411,13 +424,63 @@ class GameUI:
     def get_quadrant_from_button(self, x: int, y: int,
                                   active_options: Optional[Dict[str, str]] = None) -> Optional[str]:
         """Koordinatin hangi buton bolgesinde oldugunu dondurur."""
-        for qid, (x1, y1, x2, y2) in self.button_regions.items():
+        regions = self._active_button_regions
+        for qid, (x1, y1, x2, y2) in regions.items():
             # Bos secenekleri atla
             if active_options and not active_options.get(qid, ""):
                 continue
             if x1 <= x <= x2 and y1 <= y <= y2:
                 return qid
         return None
+
+    def _compute_button_layout(self, options: Dict[str, str]) -> Dict[str, tuple]:
+        """Aktif secenek sayisina gore buton pozisyonlarini hesaplar."""
+        active_keys = [k for k in ["sol_ust", "sag_ust", "sol_alt", "sag_alt"]
+                       if options.get(k, "")]
+        count = len(active_keys)
+
+        margin = self._layout_margin
+        gap = self._layout_gap
+        btn_area_top = self._btn_area_top
+        btn_area_bottom = self._btn_area_bottom
+        available_w = self.w - margin * 2 - gap
+        available_h = btn_area_bottom - btn_area_top
+
+        if count <= 2:
+            # 2 buton: tam yukseklik, daha buyuk
+            btn_w = available_w // 2
+            btn_h = available_h
+            top_y = btn_area_top
+            left_x = margin
+            right_x = margin + btn_w + gap
+            return {
+                "sol_ust": (left_x, top_y, left_x + btn_w, top_y + btn_h),
+                "sag_ust": (right_x, top_y, right_x + btn_w, top_y + btn_h),
+                "sol_alt": (0, 0, 0, 0),
+                "sag_alt": (0, 0, 0, 0),
+            }
+        elif count == 3:
+            # 3 buton: 2 ust + 1 ortada alt
+            btn_w = available_w // 2
+            btn_h = (available_h - gap) // 2
+            left_x = margin
+            right_x = margin + btn_w + gap
+            top_y = btn_area_top
+            bottom_y = btn_area_top + btn_h + gap
+
+            # Alt buton ortada
+            center_w = int(btn_w * 1.3)
+            center_x = (self.w - center_w) // 2
+
+            return {
+                "sol_ust": (left_x, top_y, left_x + btn_w, top_y + btn_h),
+                "sag_ust": (right_x, top_y, right_x + btn_w, top_y + btn_h),
+                "sol_alt": (center_x, bottom_y, center_x + center_w, bottom_y + btn_h),
+                "sag_alt": (0, 0, 0, 0),
+            }
+        else:
+            # 4 buton: standart 2x2
+            return dict(self.button_regions)
 
     # ------------------------------------------------------------------ #
     #  OZEL (PRIVATE) METODLAR                                            #
