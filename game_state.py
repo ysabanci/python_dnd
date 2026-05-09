@@ -94,6 +94,10 @@ class GameState:
         self.current_mode: str = "kesif"  # "kesif" | "savas" | "diyalog"
         self.pending_combat_result: Optional[Dict[str, Any]] = None
 
+        # ----- Dusman HP (savas modu icin) -----
+        self.enemy_hp: int = 0
+        self.enemy_max_hp: int = 100
+
         # ----- AI Mesaj Geçmişi (Memory) -----
         self._message_history: List[Dict[str, str]] = []
         self._init_system_prompt()
@@ -129,8 +133,14 @@ class GameState:
 
         # ----- Mod guncelleme (AI oyun akisini yonetiyor) -----
         new_mode = ai_response.get("mod", "kesif")
+        just_entered_combat = False
         if new_mode in ("kesif", "savas", "diyalog"):
+            just_entered_combat = (new_mode == "savas" and self.current_mode != "savas")
             self.current_mode = new_mode
+
+        # Dusman HP - savasa ilk girildiginde baslat
+        if just_entered_combat:
+            self.enemy_hp = self.enemy_max_hp
 
         secenekler = ai_response.get("secenekler", {})
         self.current_options = {
@@ -142,11 +152,20 @@ class GameState:
 
         self.turn_count += 1
 
-        # ----- HP ve Altin degisimi (explicit JSON alanlari) -----
+        # ----- HP degisimi (guardlar ile korunmus) -----
         hp_change = ai_response.get("hp_degisim", 0)
+
+        # Guard 1: Diyalog modunda HP asla dusmesin
+        if self.current_mode == "diyalog":
+            hp_change = 0
+        # Guard 2: Savasa ilk girildiginde HP dusmesin
+        elif just_entered_combat:
+            hp_change = 0
+
         if isinstance(hp_change, (int, float)) and hp_change != 0:
             self.modify_hp(int(hp_change))
 
+        # Altin degisimi (diyalogda da olabilir)
         gold_change = ai_response.get("altin_degisim", 0)
         if isinstance(gold_change, (int, float)) and gold_change != 0:
             self.modify_gold(int(gold_change))
@@ -188,27 +207,32 @@ class GameState:
             acc = self.pending_combat_result.get("accuracy", 0)
             action = self.pending_combat_result.get("action", "")
 
-            # Savunma farki: basarili savunma hasari azaltir
+            # Savunma farki: basarili savunma hasari tamamen engeller
             if action.lower() in ("savun", "savunma"):
                 if acc >= 70:
-                    prompt += f"ONEMLI: Oyuncu SAVUNMA yapti ve %{acc:.0f} dogrulukla BASARILI oldu. Hasar COKK az olsun (hp_degisim -3 ile -5 arasi). "
+                    prompt += f"ONEMLI: Oyuncu SAVUNMA yapti ve %{acc:.0f} dogrulukla BASARILI oldu. Hasar tamamen engellendi! hp_degisim=0. "
                 elif acc >= 40:
-                    prompt += f"ONEMLI: Oyuncu SAVUNMA yapti ama %{acc:.0f} dogrulukla KISMI BASARILI oldu. Hasar az olsun (hp_degisim -5 ile -10 arasi). "
+                    prompt += f"ONEMLI: Oyuncu SAVUNMA yapti ama %{acc:.0f} dogrulukla KISMI BASARILI oldu. hp_degisim=0, hasar zaten oyun icinde uygulandi. "
                 else:
-                    prompt += f"ONEMLI: Oyuncu SAVUNMA yapti ama %{acc:.0f} dogrulukla BASARISIZ oldu. Normal hasar ver (hp_degisim -10 ile -20 arasi). "
+                    prompt += f"ONEMLI: Oyuncu SAVUNMA yapti ama %{acc:.0f} dogrulukla BASARISIZ oldu. hp_degisim=0, hasar zaten oyun icinde uygulandi. "
             elif action.lower() in ("kac", "kacis"):
                 if acc >= 70:
                     prompt += f"ONEMLI: Oyuncu KACMAYI denedi ve %{acc:.0f} dogrulukla BASARILI oldu. Kacis BASARILI! mod='kesif' yap, hp_degisim=0. "
                 else:
-                    prompt += f"ONEMLI: Oyuncu KACMAYI denedi ama %{acc:.0f} dogrulukla BASARISIZ oldu. Kacamadi ve ekstra hasar aldi! hp_degisim -15 ile -25 arasi. mod='savas' kalsin. "
+                    prompt += f"ONEMLI: Oyuncu KACMAYI denedi ama %{acc:.0f} dogrulukla BASARISIZ oldu. Kacamadi! hp_degisim=0, hasar zaten oyun icinde uygulandi. mod='savas' kalsin. "
             else:
                 # Saldir / Buyu
                 if acc >= 70:
-                    prompt += f"ONEMLI: Oyuncu '{action}' hamlesini %{acc:.0f} dogrulukla BASARIYLA gerceklestirdi. Hamle tam etkili olsun. Ama dusman da saldirsin (hp_degisim -5 ile -15 arasi). "
+                    prompt += f"ONEMLI: Oyuncu '{action}' hamlesini %{acc:.0f} dogrulukla BASARIYLA gerceklestirdi. Hamle tam etkili olsun. hp_degisim=0, oyuncu hasar almadi. "
                 elif acc >= 40:
-                    prompt += f"ONEMLI: Oyuncu '{action}' hamlesini %{acc:.0f} dogrulukla KISMI BASARIYLA gerceklestirdi. Hamle yarim etkili olsun. Dusman saldirsin (hp_degisim -10 ile -20 arasi). "
+                    prompt += f"ONEMLI: Oyuncu '{action}' hamlesini %{acc:.0f} dogrulukla KISMI BASARIYLA gerceklestirdi. hp_degisim=0, hasar zaten oyun icinde uygulandi. "
                 else:
-                    prompt += f"ONEMLI: Oyuncu '{action}' hamlesini %{acc:.0f} dogrulukla BASARISIZ gerceklestirdi. Hamle iska gecti. Dusman guclu saldirsin (hp_degisim -15 ile -25 arasi). "
+                    prompt += f"ONEMLI: Oyuncu '{action}' hamlesini %{acc:.0f} dogrulukla BASARISIZ gerceklestirdi. hp_degisim=0, hasar zaten oyun icinde uygulandi. "
+
+            # Dusman HP bilgisi
+            prompt += f"Dusman HP: {self.enemy_hp}/{self.enemy_max_hp}. "
+            if self.enemy_hp <= 0:
+                prompt += "DUSMAN YENILDI! Savasi bitir, mod='kesif' yap, odul ver. "
             self.pending_combat_result = None
         else:
             cycle = self.turn_count % 8

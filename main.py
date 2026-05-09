@@ -140,8 +140,11 @@ class DnDGame:
                                                 self.state.current_feedback,
                                                 self.state.current_mode)
                 frame = self.ui.draw_hud(frame, self.state.character.hp, self.state.character.max_hp,
-                                         self.state.character.gold, self.state.turn_count, self.state.current_location)
-                frame = self.ui.draw_buttons(frame, self.state.current_options, hover_quadrant, progress)
+                                         self.state.character.gold, self.state.turn_count,
+                                         self.state.current_location, self.state.current_mode,
+                                         self.state.enemy_hp, self.state.enemy_max_hp)
+                frame = self.ui.draw_buttons(frame, self.state.current_options,
+                                             hover_quadrant, progress, self.state.current_mode)
 
                 if finger_pos:
                     frame = self.ui.draw_finger_cursor(frame, finger_pos)
@@ -215,22 +218,46 @@ class DnDGame:
 
         cv2.imshow(self.WINDOW_NAME, frame)
 
-        # Challenge tamamlandi mi? (is_done = sonuc ekrani gosterildi ve IDLE'a dondu)
+        # Challenge tamamlandi mi?
         if self.shape_challenge.is_done():
             accuracy, action = self.shape_challenge.get_result()
             print(f"[>] Sekil sonucu: %{accuracy:.0f} dogruluk - {action}")
 
-            # Basarisiz cizimde can azalt
-            if accuracy < 40:
-                damage = random.randint(10, 25)
-                self.state.modify_hp(-damage)
-                self.state.current_feedback = f"Basarisiz hamle! -{damage} HP"
-                print(f"[!] Basarisiz cizim! -{damage} HP (kalan: {self.state.character.hp})")
-            elif accuracy < 70:
+            action_lower = action.lower()
+            is_attack = action_lower in ("saldir", "saldiri", "buyu")
+            is_defense = action_lower in ("savun", "savunma")
+            is_flee = action_lower in ("kac", "kacis")
+
+            # ----- Oyuncu HP degisimi (sadece basarisiz/kismi) -----
+            if accuracy >= 70:
+                # Basarili hamle: oyuncu hasar ALMAZ
+                if is_attack:
+                    enemy_dmg = random.randint(25, 40)
+                    self.state.enemy_hp = max(0, self.state.enemy_hp - enemy_dmg)
+                    self.state.current_feedback = f"Basarili! Dusmana -{enemy_dmg} hasar!"
+                elif is_defense:
+                    self.state.current_feedback = "Mukemmel savunma! Hasar engellendi."
+                elif is_flee:
+                    self.state.current_feedback = "Basariyla kactin!"
+            elif accuracy >= 40:
+                # Kismi basari: az hasar al
                 damage = random.randint(3, 10)
                 self.state.modify_hp(-damage)
-                self.state.current_feedback = f"Kismi basari! -{damage} HP"
-                print(f"[!] Kismi basari! -{damage} HP (kalan: {self.state.character.hp})")
+                if is_attack:
+                    enemy_dmg = random.randint(10, 20)
+                    self.state.enemy_hp = max(0, self.state.enemy_hp - enemy_dmg)
+                    self.state.current_feedback = f"Kismi basari! -{damage} HP, dusmana -{enemy_dmg}"
+                elif is_defense:
+                    self.state.current_feedback = f"Zayif savunma! -{damage} HP"
+                else:
+                    self.state.current_feedback = f"Kismi basari! -{damage} HP"
+            else:
+                # Basarisiz: cok hasar al, dusmana hasar yok
+                damage = random.randint(10, 25)
+                self.state.modify_hp(-damage)
+                self.state.current_feedback = f"Basarisiz! -{damage} HP"
+
+            print(f"[!] HP: {self.state.character.hp} | Dusman HP: {self.state.enemy_hp}")
 
             # HP 0'a dustuyse oyun bitsin
             if self.state.character.hp <= 0:

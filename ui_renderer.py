@@ -177,8 +177,24 @@ class GameUI:
 
     def draw_buttons(self, frame: np.ndarray, options: Dict[str, str],
                      hover_quadrant: Optional[str] = None,
-                     progress: float = 0.0) -> np.ndarray:
-        """4 buyuk kare buton cizer."""
+                     progress: float = 0.0,
+                     mode: str = "kesif") -> np.ndarray:
+        """4 buton cizer. Savas modunda renkli butonlar."""
+
+        # Savas modunda buton renkleri (BGR)
+        COMBAT_COLORS = {
+            "sol_ust": (60, 60, 180),    # Saldir - Kirmizi
+            "sag_ust": (180, 120, 40),   # Savun - Mavi
+            "sol_alt": (40, 180, 180),   # Kac - Sari
+            "sag_alt": (160, 50, 160),   # Buyu - Mor
+        }
+        COMBAT_BORDERS = {
+            "sol_ust": (80, 80, 220),
+            "sag_ust": (220, 160, 60),
+            "sol_alt": (60, 220, 220),
+            "sag_alt": (200, 80, 200),
+        }
+
         for qid, (x1, y1, x2, y2) in self.button_regions.items():
             text = sanitize_text(options.get(qid, "..."))
             btn_w = x2 - x1
@@ -189,20 +205,27 @@ class GameUI:
             if is_hovered and progress >= 1.0:
                 color = self.COLOR_BUTTON_SELECTED
                 border_color = (50, 255, 50)
-                border_thick = 3
+                border_thick = 2
             elif is_hovered:
-                color = self.COLOR_BUTTON_HOVER
+                if mode == "savas":
+                    color = COMBAT_COLORS.get(qid, self.COLOR_BUTTON_HOVER)
+                else:
+                    color = self.COLOR_BUTTON_HOVER
                 border_color = self.COLOR_BORDER_HOVER
                 border_thick = 2
             else:
-                color = self.COLOR_BUTTON_NORMAL
-                border_color = self.COLOR_BORDER
+                if mode == "savas":
+                    color = COMBAT_COLORS.get(qid, self.COLOR_BUTTON_NORMAL)
+                    border_color = COMBAT_BORDERS.get(qid, self.COLOR_BORDER)
+                else:
+                    color = self.COLOR_BUTTON_NORMAL
+                    border_color = self.COLOR_BORDER
                 border_thick = 1
 
             # Seffaf buton
             overlay = frame.copy()
             cv2.rectangle(overlay, (x1, y1), (x2, y2), color, -1)
-            alpha = 0.7 if is_hovered else 0.6
+            alpha = 0.7 if is_hovered else 0.55
             frame = cv2.addWeighted(overlay, alpha, frame, 1 - alpha, 0)
             cv2.rectangle(frame, (x1, y1), (x2, y2), border_color, border_thick)
 
@@ -218,8 +241,8 @@ class GameUI:
 
             # Progress bar (hover durumunda)
             if is_hovered and 0 < progress < 1.0:
-                bar_h = 8
-                bar_y = y2 - bar_h - 4
+                bar_h = 6
+                bar_y = y2 - bar_h - 3
                 bar_total_w = btn_w - 8
                 bar_fill_w = int(bar_total_w * progress)
                 cv2.rectangle(frame, (x1 + 4, bar_y),
@@ -235,8 +258,10 @@ class GameUI:
         return frame
 
     def draw_hud(self, frame: np.ndarray, hp: int, max_hp: int,
-                 gold: int, turn: int, location: str) -> np.ndarray:
-        """HUD bandi (HP bar, altin, tur) - hikaye ile butonlar arasinda."""
+                 gold: int, turn: int, location: str,
+                 mode: str = "kesif", enemy_hp: int = 0,
+                 enemy_max_hp: int = 100) -> np.ndarray:
+        """HUD bandi (HP bar, altin, tur, dusman HP) - hikaye ile butonlar arasinda."""
         # HUD arka plan bandi
         hud_bg_y1 = self.hud_y - 4
         hud_bg_y2 = self.hud_y + self.hud_height + 4
@@ -247,48 +272,79 @@ class GameUI:
         cv2.rectangle(frame, (8, hud_bg_y1), (self.w - 8, hud_bg_y2),
                       self.COLOR_BORDER, 1)
 
-        # HP Bar
+        # Oyuncu HP Bar (daima yesil)
         bar_x = 15
         bar_y = self.hud_y
-        bar_w = 260
         bar_h = self.hud_height
         hp_ratio = max(0, hp / max_hp)
 
-        cv2.rectangle(frame, (bar_x, bar_y), (bar_x + bar_w, bar_y + bar_h),
-                      self.COLOR_HP_BAR_BG, -1)
+        if mode == "savas" and enemy_hp > 0:
+            # Savas modunda: iki bar yan yana
+            bar_w = (self.w - 50) // 2 - 10
 
-        if hp_ratio > 0.5:
-            fill_color = self.COLOR_HP_BAR_HIGH
-        elif hp_ratio > 0.25:
-            fill_color = (30, 180, 230)
+            # Oyuncu HP (sol - yesil)
+            cv2.rectangle(frame, (bar_x, bar_y), (bar_x + bar_w, bar_y + bar_h),
+                          self.COLOR_HP_BAR_BG, -1)
+            fill_color = (50, 200, 50)  # Daima yesil
+            cv2.rectangle(frame, (bar_x, bar_y),
+                          (bar_x + int(bar_w * hp_ratio), bar_y + bar_h),
+                          fill_color, -1)
+            cv2.rectangle(frame, (bar_x, bar_y), (bar_x + bar_w, bar_y + bar_h),
+                          (80, 200, 80), 1)
+
+            hp_text = f"SEN: {hp}/{max_hp}"
+            (tw, th), _ = cv2.getTextSize(hp_text, self.FONT_BOLD, self.FONT_SCALE_HP, 2)
+            cv2.putText(frame, hp_text, (bar_x + (bar_w - tw) // 2, bar_y + (bar_h + th) // 2),
+                        self.FONT_BOLD, self.FONT_SCALE_HP, self.COLOR_TEXT_WHITE, 2, cv2.LINE_AA)
+
+            # Dusman HP (sag - kirmizi)
+            enemy_bar_x = bar_x + bar_w + 20
+            enemy_ratio = max(0, enemy_hp / enemy_max_hp) if enemy_max_hp > 0 else 0
+
+            cv2.rectangle(frame, (enemy_bar_x, bar_y), (enemy_bar_x + bar_w, bar_y + bar_h),
+                          self.COLOR_HP_BAR_BG, -1)
+            cv2.rectangle(frame, (enemy_bar_x, bar_y),
+                          (enemy_bar_x + int(bar_w * enemy_ratio), bar_y + bar_h),
+                          (50, 50, 220), -1)  # Kirmizi
+            cv2.rectangle(frame, (enemy_bar_x, bar_y), (enemy_bar_x + bar_w, bar_y + bar_h),
+                          (80, 80, 220), 1)
+
+            enemy_text = f"DUSMAN: {enemy_hp}/{enemy_max_hp}"
+            (tw2, th2), _ = cv2.getTextSize(enemy_text, self.FONT_BOLD, self.FONT_SCALE_HP, 2)
+            cv2.putText(frame, enemy_text,
+                        (enemy_bar_x + (bar_w - tw2) // 2, bar_y + (bar_h + th2) // 2),
+                        self.FONT_BOLD, self.FONT_SCALE_HP, self.COLOR_TEXT_WHITE, 2, cv2.LINE_AA)
         else:
-            fill_color = self.COLOR_HP_BAR_LOW
-        cv2.rectangle(frame, (bar_x, bar_y),
-                      (bar_x + int(bar_w * hp_ratio), bar_y + bar_h),
-                      fill_color, -1)
-        cv2.rectangle(frame, (bar_x, bar_y), (bar_x + bar_w, bar_y + bar_h),
-                      self.COLOR_BORDER, 2)
+            # Normal mod: tek oyuncu HP + altin/tur
+            bar_w = 260
 
-        # HP text (bar icinde)
-        hp_text = f"HP: {hp}/{max_hp}"
-        (tw, th), _ = cv2.getTextSize(hp_text, self.FONT_BOLD,
-                                       self.FONT_SCALE_HP, 2)
-        text_x = bar_x + (bar_w - tw) // 2
-        text_y = bar_y + (bar_h + th) // 2
-        cv2.putText(frame, hp_text, (text_x, text_y), self.FONT_BOLD,
-                    self.FONT_SCALE_HP, self.COLOR_TEXT_WHITE, 2, cv2.LINE_AA)
+            cv2.rectangle(frame, (bar_x, bar_y), (bar_x + bar_w, bar_y + bar_h),
+                          self.COLOR_HP_BAR_BG, -1)
+            fill_color = (50, 200, 50)  # Daima yesil
+            cv2.rectangle(frame, (bar_x, bar_y),
+                          (bar_x + int(bar_w * hp_ratio), bar_y + bar_h),
+                          fill_color, -1)
+            cv2.rectangle(frame, (bar_x, bar_y), (bar_x + bar_w, bar_y + bar_h),
+                          (80, 200, 80), 1)
 
-        # Altin ve Tur bilgisi (HP barin saginda)
-        info_x = bar_x + bar_w + 15
-        gold_text = f"Altin: {gold}"
-        turn_text = f"Tur: {turn}"
-        cv2.putText(frame, gold_text, (info_x, bar_y + bar_h // 2 + 2),
-                    self.FONT_BOLD, self.FONT_SCALE_HUD, self.COLOR_TEXT_GOLD,
-                    self.FONT_THICKNESS, cv2.LINE_AA)
-        (gw, _), _ = cv2.getTextSize(gold_text, self.FONT_BOLD, self.FONT_SCALE_HUD, self.FONT_THICKNESS)
-        cv2.putText(frame, turn_text, (info_x + gw + 20, bar_y + bar_h // 2 + 2),
-                    self.FONT, self.FONT_SCALE_HUD, self.COLOR_TEXT_WHITE,
-                    self.FONT_THICKNESS, cv2.LINE_AA)
+            hp_text = f"HP: {hp}/{max_hp}"
+            (tw, th), _ = cv2.getTextSize(hp_text, self.FONT_BOLD, self.FONT_SCALE_HP, 2)
+            text_x = bar_x + (bar_w - tw) // 2
+            text_y = bar_y + (bar_h + th) // 2
+            cv2.putText(frame, hp_text, (text_x, text_y), self.FONT_BOLD,
+                        self.FONT_SCALE_HP, self.COLOR_TEXT_WHITE, 2, cv2.LINE_AA)
+
+            # Altin ve Tur bilgisi
+            info_x = bar_x + bar_w + 15
+            gold_text = f"Altin: {gold}"
+            turn_text = f"Tur: {turn}"
+            cv2.putText(frame, gold_text, (info_x, bar_y + bar_h // 2 + 2),
+                        self.FONT_BOLD, self.FONT_SCALE_HUD, self.COLOR_TEXT_GOLD,
+                        self.FONT_THICKNESS, cv2.LINE_AA)
+            (gw, _), _ = cv2.getTextSize(gold_text, self.FONT_BOLD, self.FONT_SCALE_HUD, self.FONT_THICKNESS)
+            cv2.putText(frame, turn_text, (info_x + gw + 20, bar_y + bar_h // 2 + 2),
+                        self.FONT, self.FONT_SCALE_HUD, self.COLOR_TEXT_WHITE,
+                        self.FONT_THICKNESS, cv2.LINE_AA)
 
         return frame
 
