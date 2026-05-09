@@ -15,6 +15,7 @@ from game_state import GameState, Character
 from ai_manager import AdventureAI
 from ui_renderer import GameUI
 from shape_challenge import ShapeChallenge, ShapeType
+from fist_challenge import FistChallenge
 
 
 class DnDGame:
@@ -25,6 +26,7 @@ class DnDGame:
     # Oyun fazlari
     PHASE_NORMAL = "normal"
     PHASE_SHAPE_CHALLENGE = "shape_challenge"
+    PHASE_FIST_CHALLENGE = "fist_challenge"
 
     SHAPE_TYPES = [ShapeType.TRIANGLE, ShapeType.SQUARE, ShapeType.CIRCLE,
                    ShapeType.RECTANGLE, ShapeType.INFINITY]
@@ -45,6 +47,9 @@ class DnDGame:
 
         print("[*] Sekil challenge modulu hazirlaniyor...")
         self.shape_challenge = ShapeChallenge(self.tracker.frame_width, self.tracker.frame_height)
+
+        print("[*] Yumruk challenge modulu hazirlaniyor...")
+        self.fist_challenge = FistChallenge(self.tracker.frame_width, self.tracker.frame_height)
 
         # ----- Oyun Fazı -----
         self.current_phase = self.PHASE_NORMAL
@@ -98,6 +103,13 @@ class DnDGame:
                         break
                     continue
 
+                # 4b) Yumruk challenge aktif mi?
+                if self.current_phase == self.PHASE_FIST_CHALLENGE:
+                    self._handle_fist_challenge(frame)
+                    if cv2.waitKey(1) & 0xFF == ord("q"):
+                        break
+                    continue
+
                 # 5) Normal oyun akisi - El takibi
                 finger_pos = self.tracker.detect_finger(frame)
 
@@ -106,7 +118,8 @@ class DnDGame:
                 selected = None
 
                 if finger_pos:
-                    btn_qid = self.ui.get_quadrant_from_button(finger_pos[0], finger_pos[1])
+                    btn_qid = self.ui.get_quadrant_from_button(
+                        finger_pos[0], finger_pos[1], self.state.current_options)
                     if btn_qid:
                         qmap = {"sol_ust": Quadrant.SOL_UST, "sag_ust": Quadrant.SAG_UST,
                                 "sol_alt": Quadrant.SOL_ALT, "sag_alt": Quadrant.SAG_ALT}
@@ -128,7 +141,7 @@ class DnDGame:
                     if self.state.is_startup:
                         self._handle_startup_choice(choice_text)
                     elif self.state.current_mode == "savas":
-                        self._start_shape_challenge(choice_text)
+                        self._start_combat_challenge(choice_text)
                     else:
                         self._handle_normal_choice(choice_text)
 
@@ -235,14 +248,21 @@ class DnDGame:
         history = self.state.get_message_history()
         self.ai.request_story(history)
 
-    def _start_shape_challenge(self, choice_text: str) -> None:
-        """Savas modunda secim yapildiginda sekil challenge'i baslatir."""
+    def _start_combat_challenge(self, choice_text: str) -> None:
+        """Savas modunda secim yapildiginda rastgele challenge baslatir."""
         self._pending_combat_choice = choice_text
-        shape = random.choice(self.SHAPE_TYPES)
-        self.shape_challenge.start_challenge(shape, choice_text)
-        self.current_phase = self.PHASE_SHAPE_CHALLENGE
         self.tracker.reset_selection()
-        print(f"[>] Sekil challenge basladi: {shape.value} - {choice_text}")
+
+        # Rastgele: %60 sekil cizme, %40 yumruk challenge
+        if random.random() < 0.6:
+            shape = random.choice(self.SHAPE_TYPES)
+            self.shape_challenge.start_challenge(shape, choice_text)
+            self.current_phase = self.PHASE_SHAPE_CHALLENGE
+            print(f"[>] Sekil challenge basladi: {shape.value} - {choice_text}")
+        else:
+            self.fist_challenge.start_challenge(choice_text)
+            self.current_phase = self.PHASE_FIST_CHALLENGE
+            print(f"[>] Yumruk challenge basladi - {choice_text}")
 
     def _handle_shape_challenge(self, frame: np.ndarray) -> None:
         """Sekil cizme mini oyunu fazini yonetir."""
@@ -314,6 +334,78 @@ class DnDGame:
             self._send_combat_result(accuracy, action)
             self.shape_challenge.reset()
 
+    def _handle_fist_challenge(self, frame: np.ndarray) -> None:
+        """Yumruk mini oyunu fazini yonetir."""
+
+        # Once parmak tespiti yap (detect_fist icin _last_result gerekli)
+        self.tracker.detect_finger(frame)
+        fist_pos, is_fist = self.tracker.detect_fist(frame)
+
+        self.fist_challenge.update(fist_pos, is_fist)
+
+        # Challenge UI ciz
+        frame = self.fist_challenge.draw(frame)
+
+        # Yumruk imleci goster
+        if fist_pos and is_fist:
+            cv2.circle(frame, fist_pos, 20, (50, 50, 255), 3)
+            cv2.circle(frame, fist_pos, 8, (50, 255, 50), -1)
+        elif fist_pos:
+            cv2.circle(frame, fist_pos, 15, (200, 200, 200), 2)
+
+        # El iskeletini ciz
+        frame = self.tracker.draw_hand_landmarks(frame)
+
+        cv2.imshow(self.WINDOW_NAME, frame)
+
+        # Challenge tamamlandi mi?
+        if self.fist_challenge.is_done():
+            accuracy, action = self.fist_challenge.get_result()
+            print(f"[>] Yumruk sonucu: %{accuracy:.0f} dogruluk - {action}")
+
+            action_lower = action.lower()
+            is_attack = action_lower in ("saldir", "saldiri", "buyu")
+            is_defense = action_lower in ("savun", "savunma")
+            is_flee = action_lower in ("kac", "kacis")
+
+            # HP degisimi (ayni mantik)
+            if accuracy >= 70:
+                if is_attack:
+                    enemy_dmg = random.randint(25, 40)
+                    self.state.enemy_hp = max(0, self.state.enemy_hp - enemy_dmg)
+                    self.state.current_feedback = f"Basarili! Dusmana -{enemy_dmg} hasar!"
+                elif is_defense:
+                    self.state.current_feedback = "Mukemmel savunma! Hasar engellendi."
+                elif is_flee:
+                    self.state.current_feedback = "Basariyla kactin!"
+            elif accuracy >= 40:
+                damage = random.randint(3, 10)
+                self.state.modify_hp(-damage)
+                if is_attack:
+                    enemy_dmg = random.randint(10, 20)
+                    self.state.enemy_hp = max(0, self.state.enemy_hp - enemy_dmg)
+                    self.state.current_feedback = f"Kismi basari! -{damage} HP, dusmana -{enemy_dmg}"
+                elif is_defense:
+                    self.state.current_feedback = f"Zayif savunma! -{damage} HP"
+                else:
+                    self.state.current_feedback = f"Kismi basari! -{damage} HP"
+            else:
+                damage = random.randint(10, 25)
+                self.state.modify_hp(-damage)
+                self.state.current_feedback = f"Basarisiz! -{damage} HP"
+
+            print(f"[!] HP: {self.state.character.hp} | Dusman HP: {self.state.enemy_hp}")
+
+            if self.state.character.hp <= 0:
+                self.state.is_game_over = True
+                self.state.game_over_reason = "Savas sirasinda yenildin!"
+                self.current_phase = self.PHASE_NORMAL
+                self.fist_challenge.reset()
+                return
+
+            self._send_combat_result(accuracy, action)
+            self.fist_challenge.reset()
+
     def _send_combat_result(self, accuracy: float, action: str) -> None:
         """Savas sonucunu AI'a gonderir."""
         self.current_phase = self.PHASE_NORMAL
@@ -358,6 +450,7 @@ class DnDGame:
         self._init_startup()
         self.current_phase = self.PHASE_NORMAL
         self.shape_challenge.reset()
+        self.fist_challenge.reset()
 
 
 def main():

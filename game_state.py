@@ -106,6 +106,7 @@ class GameState:
             "sol_alt": "...",
             "sag_alt": "...",
         }
+        self.active_option_count: int = 4  # 2, 3, veya 4 secenek
 
         # ----- Oyun Durumu Bayrakları -----
         self.is_game_over: bool = False
@@ -169,12 +170,24 @@ class GameState:
             self.enemy_hp = self.enemy_max_hp
 
         secenekler = ai_response.get("secenekler", {})
-        self.current_options = {
-            "sol_ust": secenekler.get("sol_ust", "..."),
-            "sag_ust": secenekler.get("sag_ust", "..."),
-            "sol_alt": secenekler.get("sol_alt", "..."),
-            "sag_alt": secenekler.get("sag_alt", "..."),
-        }
+        secenek_sayisi = ai_response.get("secenek_sayisi", 4)
+
+        # Savas modunda daima 4 secenek
+        if self.current_mode == "savas":
+            secenek_sayisi = 4
+
+        # Secenek sayisini 2-4 arasi sinirla
+        secenek_sayisi = max(2, min(4, secenek_sayisi))
+        self.active_option_count = secenek_sayisi
+
+        # Secenekleri ata (kullanilmayanlar bos kalir)
+        option_keys = ["sol_ust", "sag_ust", "sol_alt", "sag_alt"]
+        self.current_options = {}
+        for i, key in enumerate(option_keys):
+            if i < secenek_sayisi:
+                self.current_options[key] = secenekler.get(key, "...")
+            else:
+                self.current_options[key] = ""
 
         self.turn_count += 1
 
@@ -415,19 +428,21 @@ class GameState:
             "1. YALNIZCA JSON formatinda cevap ver. Asla on soz veya aciklama yazma.\n"
             "2. Turkce ozel karakter (s, c, g, i, o, u) KESINLIKLE KULLANMA. Hep ASCII kullan.\n"
             "3. Yanit yapisi:\n"
-            '{"hikaye_metni": "...", "feedback": "...", "mod": "kesif", "hp_degisim": 0, "altin_degisim": 0, '
+            '{"hikaye_metni": "...", "feedback": "...", "mod": "kesif", "secenek_sayisi": 4, '
+            '"hp_degisim": 0, "altin_degisim": 0, '
             '"secenekler": {"sol_ust": "...", "sag_ust": "...", "sol_alt": "...", "sag_alt": "..."}}\n'
             "4. Hikaye 3 cumleyi, secenekler 5 kelimeyi gecmesin.\n"
             "5. MOD ALANI (ZORUNLU):\n"
-            "   - 'kesif': Normal kesif. 4 farkli secenek sun.\n"
-            "   - 'savas': Dusman ile mucadele. Secenekler KESINLIKLE: sol_ust='Saldir', sag_ust='Savun', sol_alt='Kac', sag_alt='Buyu' olsun.\n"
-            "   - 'diyalog': NPC konusmasi. 4 diyalog secenegi sun.\n"
-            "6. hp_degisim: HP degisimi (negatif=hasar, pozitif=iyilesme). Savas disinda genelde 0.\n"
-            "7. altin_degisim: Altin degisimi. Odul/harcama durumunda kullan.\n"
-            "8. feedback: Oyuncunun son eyleminin kisa sonucu (ornegin 'Canin 10 azaldi.' veya '15 altin kazandin.').\n"
-            "9. Oyunu dinamik yonet: bazi turlarda savas, bazi turlarda kesif, bazi turlarda diyalog olsun. Monoton olma.\n"
-            "10. hp_degisim ve altin_degisim DAIMA sayi olmali (0, -10, +20 gibi). Bos birakma.\n"
-            "11. SAVAS KURALLARI (COK ONEMLI):\n"
+            "   - 'kesif': Normal kesif. secenek_sayisi 2-4 arasi. Duruma gore karar ver: bazen 2, bazen 3, bazen 4 secenek sun.\n"
+            "   - 'savas': Dusman ile mucadele. secenek_sayisi DAİMA 4. Secenekler KESINLIKLE: sol_ust='Saldir', sag_ust='Savun', sol_alt='Kac', sag_alt='Buyu' olsun.\n"
+            "   - 'diyalog': NPC konusmasi. secenek_sayisi 2-4 arasi. Duruma gore az veya cok secenek sun.\n"
+            "6. secenek_sayisi: 2 ise sadece sol_ust ve sag_ust dolu olsun. 3 ise sol_ust, sag_ust, sol_alt dolu olsun. 4 ise hepsi dolu olsun.\n"
+            "7. hp_degisim: HP degisimi (negatif=hasar, pozitif=iyilesme). Savas disinda genelde 0.\n"
+            "8. altin_degisim: Altin degisimi. Odul/harcama durumunda kullan.\n"
+            "9. feedback: Oyuncunun son eyleminin kisa sonucu.\n"
+            "10. Oyunu dinamik yonet: bazi turlarda savas, bazi turlarda kesif, bazi turlarda diyalog olsun. Monoton olma.\n"
+            "11. hp_degisim ve altin_degisim DAIMA sayi olmali (0, -10, +20 gibi). Bos birakma.\n"
+            "12. SAVAS KURALLARI (COK ONEMLI):\n"
             "   - Savas modunda dusman HER TUR saldirsin. hp_degisim NEGATIF olmali (-5 ile -25 arasi).\n"
             "   - Oyuncu 'Savun' secerse hasar AZALSIN (hp_degisim -3 ile -8 arasi). Savunma hasari azaltir.\n"
             "   - Oyuncu 'Saldir' secerse dusmana hasar verir ama kendisi de hasar alir.\n"

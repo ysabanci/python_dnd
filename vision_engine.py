@@ -138,6 +138,40 @@ class HandTracker:
 
         return (x, y)
 
+    def detect_fist(self, frame: np.ndarray) -> Tuple[Optional[Tuple[int, int]], bool]:
+        """
+        Yumruk jesti ve avuc merkezi konumunu tespit eder.
+
+        Returns:
+            (palm_pos, is_fist): Avuc merkezi (x,y) ve yumruk yapilip yapilmadigi.
+            El algilanmazsa (None, False) doner.
+        """
+        if self._last_result is None or not self._last_result.hand_landmarks:
+            return None, False
+
+        hand = self._last_result.hand_landmarks[0]
+
+        # Avuc merkezi (wrist=0, index_mcp=5, pinky_mcp=17 ortalamasi)
+        wrist = hand[0]
+        idx_mcp = hand[5]
+        pinky_mcp = hand[17]
+        palm_x = int(((wrist.x + idx_mcp.x + pinky_mcp.x) / 3) * self.frame_width)
+        palm_y = int(((wrist.y + idx_mcp.y + pinky_mcp.y) / 3) * self.frame_height)
+
+        # Yumruk tespiti: parmak uclari PIP eklemlerinin altinda mi?
+        # (ekran koordinatlarinda y asagi dogru artar)
+        finger_tips = [8, 12, 16, 20]   # INDEX, MIDDLE, RING, PINKY tips
+        finger_pips = [6, 10, 14, 18]   # INDEX, MIDDLE, RING, PINKY PIPs
+
+        curled_count = 0
+        for tip_idx, pip_idx in zip(finger_tips, finger_pips):
+            if hand[tip_idx].y > hand[pip_idx].y:
+                curled_count += 1
+
+        is_fist = curled_count >= 3  # En az 3 parmak kivrilmissa yumruk
+
+        return (palm_x, palm_y), is_fist
+
     def get_quadrant(self, x: int, y: int) -> Quadrant:
         """
         Verilen (x, y) koordinatının hangi çeyrekte olduğunu belirler.

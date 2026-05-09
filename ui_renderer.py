@@ -199,7 +199,10 @@ class GameUI:
         }
 
         for qid, (x1, y1, x2, y2) in self.button_regions.items():
-            text = sanitize_text(options.get(qid, "..."))
+            text = sanitize_text(options.get(qid, ""))
+            # Bos secenekleri atla (2 veya 3 secenek modunda)
+            if not text or text == "":
+                continue
             btn_w = x2 - x1
             btn_h = y2 - y1
 
@@ -405,9 +408,13 @@ class GameUI:
         cv2.circle(frame, pos, 6, self.COLOR_TEXT_WHITE, -1)
         return frame
 
-    def get_quadrant_from_button(self, x: int, y: int) -> Optional[str]:
+    def get_quadrant_from_button(self, x: int, y: int,
+                                  active_options: Optional[Dict[str, str]] = None) -> Optional[str]:
         """Koordinatin hangi buton bolgesinde oldugunu dondurur."""
         for qid, (x1, y1, x2, y2) in self.button_regions.items():
+            # Bos secenekleri atla
+            if active_options and not active_options.get(qid, ""):
+                continue
             if x1 <= x <= x2 and y1 <= y <= y2:
                 return qid
         return None
