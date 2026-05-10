@@ -38,6 +38,7 @@ class DnDGame:
     PHASE_ENEMY_ATTACK = "enemy_attack"
     PHASE_WEAPON_SELECT = "weapon_select"
     PHASE_DICE_ROLL = "dice_roll"
+    PHASE_INVENTORY = "inventory"
 
     SHAPE_TYPES = [ShapeType.TRIANGLE, ShapeType.SQUARE, ShapeType.CIRCLE,
                    ShapeType.RECTANGLE, ShapeType.INFINITY]
@@ -100,6 +101,13 @@ class DnDGame:
 
         # ----- Muzik: son bilinen mod (gecis tespiti icin) -----
         self._last_music_mode: str = ""
+
+        # ----- Envanter Fazi -----
+        self._inventory_page: int = 0
+        self._inv_hovered_idx: int = -1
+        self._inv_hovered_devam: bool = False
+        self._inv_dwell_start: float = 0.0
+        self._inv_dwell_target: str = ""  # "item:X" veya "devam" veya "prev"/"next"
 
         # ----- Acilis: Karakter Olusturma -----
         print("[*] Karakter olusturma bekleniyor...")
@@ -173,6 +181,13 @@ class DnDGame:
                 # 4e) Zar atma fazi aktif mi?
                 if self.current_phase == self.PHASE_DICE_ROLL:
                     self._handle_dice_roll(frame)
+                    if cv2.waitKey(1) & 0xFF == ord("q"):
+                        break
+                    continue
+
+                # 4f) Envanter fazi aktif mi?
+                if self.current_phase == self.PHASE_INVENTORY:
+                    self._handle_inventory(frame)
                     if cv2.waitKey(1) & 0xFF == ord("q"):
                         break
                     continue
@@ -874,6 +889,140 @@ class DnDGame:
             self.dice_challenge.reset()
             self.current_phase = self.PHASE_NORMAL
 
+    INV_DWELL_TIME = 1.2  # Envanter item secimi suresi (saniye)
+    INV_DEVAM_DWELL = 1.5  # Devam butonu secim suresi
+
+    def _handle_inventory(self, frame: np.ndarray) -> None:
+        """Envanter ekranini yonetir - el takibiyle item equip/unequip."""
+        finger_pos = self.tracker.detect_finger(frame)
+
+        # Mevcut silahlar ve envanter
+        all_weapons = self.state.get_all_weapons()
+        equipped = self.state.equipped_items
+        all_items = self.state.character.inventory
+
+        # Eger silah yoksa direkt devam
+        if not all_weapons:
+            self.current_phase = self.PHASE_NORMAL
+            print("[>] Envanterde silah yok, devam ediliyor...")
+            return
+
+        # Hover tespiti
+        hovered_idx = -1
+        hovered_devam = False
+        dwell_progress = 0.0
+
+        # Onceki frame'den regions'i kullanmak icin preview ciz
+        frame_preview, regions = self.ui.draw_inventory(
+            frame, all_weapons, equipped, all_items,
+            self.state.get_weapon_stats,
+            self._inventory_page,
+            self._inv_hovered_idx,
+            self._inv_hovered_devam,
+            dwell_progress
+        )
+
+        if finger_pos:
+            fx, fy = finger_pos
+
+            # Item satirlarina bak
+            for i, (item_name, (x1, y1, x2, y2)) in enumerate(regions['items']):
+                if x1 <= fx <= x2 and y1 <= fy <= y2:
+                    hovered_idx = i
+                    break
+
+            # Devam butonuna bak
+            if regions['devam']:
+                dx1, dy1, dx2, dy2 = regions['devam']
+                if dx1 <= fx <= dx2 and dy1 <= fy <= dy2:
+                    hovered_devam = True
+
+            # Onceki sayfa butonuna bak
+            if regions['prev']:
+                px1, py1, px2, py2 = regions['prev']
+                if px1 <= fx <= px2 and py1 <= fy <= py2:
+                    target = "prev"
+                    if self._inv_dwell_target != target:
+                        self._inv_dwell_target = target
+                        self._inv_dwell_start = time.time()
+                    elif time.time() - self._inv_dwell_start >= 0.8:
+                        self._inventory_page = max(0, self._inventory_page - 1)
+                        self._inv_dwell_start = time.time()
+                        self.tracker.reset_selection()
+
+            # Sonraki sayfa butonuna bak
+            if regions['next']:
+                nx1, ny1, nx2, ny2 = regions['next']
+                if nx1 <= fx <= nx2 and ny1 <= fy <= ny2:
+                    target = "next"
+                    if self._inv_dwell_target != target:
+                        self._inv_dwell_target = target
+                        self._inv_dwell_start = time.time()
+                    elif time.time() - self._inv_dwell_start >= 0.8:
+                        self._inventory_page += 1
+                        self._inv_dwell_start = time.time()
+                        self.tracker.reset_selection()
+
+        # Dwell hesapla
+        now = time.time()
+        current_target = ""
+
+        if hovered_idx >= 0:
+            items_on_page = regions['items']
+            if hovered_idx < len(items_on_page):
+                item_name = items_on_page[hovered_idx][0]
+                current_target = f"item:{item_name}"
+        elif hovered_devam:
+            current_target = "devam"
+
+        # Target degistiyse timer sifirla
+        if current_target != self._inv_dwell_target:
+            self._inv_dwell_target = current_target
+            self._inv_dwell_start = now
+
+        # Dwell progress hesapla
+        if current_target:
+            dwell_time = self.INV_DEVAM_DWELL if current_target == "devam" else self.INV_DWELL_TIME
+            elapsed = now - self._inv_dwell_start
+            dwell_progress = min(elapsed / dwell_time, 1.0)
+
+            if dwell_progress >= 1.0:
+                # Secim tamamlandi
+                if current_target == "devam":
+                    # Envanterden cik
+                    self.current_phase = self.PHASE_NORMAL
+                    self._inv_dwell_target = ""
+                    self.tracker.reset_selection()
+                    print(f"[>] Envanter kapatildi. Equipped: {self.state.equipped_items}")
+                    return
+                elif current_target.startswith("item:"):
+                    weapon = current_target[5:]
+                    result = self.state.toggle_equipped(weapon)
+                    status = "EQUIPPED" if result else "UNEQUIPPED"
+                    print(f"[>] {weapon} -> {status}")
+                    # Timer'i sifirla ama target'i degistirme (bekleme efekti)
+                    self._inv_dwell_start = now
+                    self._inv_dwell_target = ""
+
+        # Update hover state
+        self._inv_hovered_idx = hovered_idx
+        self._inv_hovered_devam = hovered_devam
+
+        # Gercek frame'i ciz (guncellenmis hover/progress ile)
+        frame, _ = self.ui.draw_inventory(
+            frame, all_weapons, equipped, all_items,
+            self.state.get_weapon_stats,
+            self._inventory_page,
+            hovered_idx, hovered_devam, dwell_progress
+        )
+
+        # Parmak imleci
+        if finger_pos:
+            frame = self.ui.draw_finger_cursor(frame, finger_pos)
+        frame = self.tracker.draw_hand_landmarks(frame)
+
+        cv2.imshow(self.WINDOW_NAME, frame)
+
     def _send_combat_result(self, accuracy: float, action: str) -> None:
         """Savas sonucunu AI'a gonderir."""
         self.current_phase = self.PHASE_NORMAL
@@ -908,7 +1057,13 @@ class DnDGame:
                     if current_mode == "savas":
                         self.music.play_battle_music()
                     elif self._last_music_mode == "savas":
+                        # Savastan cikildiysa envanter goster
                         self.music.resume_class_music()
+                        self.current_phase = self.PHASE_INVENTORY
+                        self._inventory_page = 0
+                        self._inv_dwell_start = 0.0
+                        self._inv_dwell_target = ""
+                        print("[>] Savas bitti! Envanter ekrani aciliyor...")
                     self._last_music_mode = current_mode
 
                 # Savas/baslangic disinda rastgele can dolumu
@@ -932,6 +1087,8 @@ class DnDGame:
         self._extra_turn_active = False
         self._last_music_mode = ""
         self._selected_weapon = ""
+        self._inventory_page = 0
+        self._inv_dwell_target = ""
         self.music.stop()
 
 

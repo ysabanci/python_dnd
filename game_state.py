@@ -163,6 +163,7 @@ class GameState:
 
         # ----- Silah ve Envanter -----
         self.equipped_weapon: str = ""
+        self.equipped_items: List[str] = []  # Savas icin secilen max 4 silah
 
         # ----- Zar Mekaniği -----
         self.dice_required: bool = False
@@ -291,6 +292,10 @@ class GameState:
             if yeni_esya not in self.character.inventory:
                 self.character.inventory.append(yeni_esya)
                 print(f"[+] Yeni esya bulundu: {yeni_esya}")
+                # Silahsa ve yer varsa otomatik equip
+                if yeni_esya not in self.NON_WEAPON_ITEMS and len(self.equipped_items) < 4:
+                    self.equipped_items.append(yeni_esya)
+                    print(f"[+] Otomatik equip: {yeni_esya}")
                 # Feedback'e ekle
                 if self.current_feedback:
                     self.current_feedback += f" | Yeni esya: {yeni_esya}!"
@@ -438,6 +443,7 @@ class GameState:
         """Baslangic silahini uygular."""
         self.character.inventory = [weapon, "Mesale"]
         self.equipped_weapon = weapon
+        self.equipped_items = [weapon]  # Ilk silahi equip et
 
     def get_weapon_stats(self, weapon: str = "") -> dict:
         """Silah istatistiklerini dondurur. Bilinmeyen silahlar icin otomatik uretir."""
@@ -467,14 +473,36 @@ class GameState:
                         "Ip", "Canta", "Kitap", "Mum"}
 
     def get_combat_weapons(self) -> list:
-        """Envanterdeki savas silahlarini dondurur (yardimci esyalar haric)."""
+        """Equip edilmis savas silahlarini dondurur (max 4)."""
+        # Envanterde olmayanları equipped'dan cikar
+        self.equipped_items = [w for w in self.equipped_items
+                               if w in self.character.inventory]
+        if self.equipped_items:
+            return self.equipped_items[:4]
+        # Fallback: envanterdeki ilk silahi equip et
+        for item in self.character.inventory:
+            if item not in self.NON_WEAPON_ITEMS:
+                self.equipped_items.append(item)
+                return [item]
+        return ["Yumruk"]
+
+    def get_all_weapons(self) -> list:
+        """Envanterdeki tum silahları dondurur (equip durumundan bagimsiz)."""
         weapons = []
         for item in self.character.inventory:
             if item not in self.NON_WEAPON_ITEMS:
                 weapons.append(item)
-        if not weapons:
-            weapons = ["Yumruk"]  # Fallback
         return weapons
+
+    def toggle_equipped(self, weapon: str) -> bool:
+        """Silahi equip/unequip yapar. True=equip, False=unequip."""
+        if weapon in self.equipped_items:
+            self.equipped_items.remove(weapon)
+            return False
+        elif len(self.equipped_items) < 4 and weapon not in self.NON_WEAPON_ITEMS:
+            self.equipped_items.append(weapon)
+            return True
+        return False  # 4 slot dolu
 
     def get_weapons_for_class(self, class_name: str) -> list:
         """Sinifa gore silah seceneklerini dondurur."""

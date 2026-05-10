@@ -625,3 +625,209 @@ class GameUI:
                         self.FONT, self.FONT_SCALE_BTN,
                         self.COLOR_TEXT_WHITE, self.FONT_THICKNESS_THIN,
                         cv2.LINE_AA)
+
+    # ------------------------------------------------------------------ #
+    #  ENVANTER EKRANI                                                     #
+    # ------------------------------------------------------------------ #
+
+    ITEMS_PER_PAGE = 6
+    COLOR_EQUIPPED = (50, 220, 120)         # Yesil
+    COLOR_UNEQUIPPED = (140, 140, 140)      # Gri
+    COLOR_ITEM_BG = (40, 40, 50)
+    COLOR_ITEM_HOVER = (60, 80, 120)
+    COLOR_DEVAM_BG = (50, 130, 80)
+    COLOR_DEVAM_HOVER = (70, 180, 100)
+
+    def draw_inventory(self, frame: np.ndarray,
+                       all_weapons: list,
+                       equipped_items: list,
+                       all_items: list,
+                       weapon_stats_fn,
+                       page: int = 0,
+                       hovered_idx: int = -1,
+                       hovered_devam: bool = False,
+                       dwell_progress: float = 0.0) -> Tuple[np.ndarray, dict]:
+        """
+        Envanter ekranini cizer.
+
+        Returns:
+            (frame, regions) - regions dict:
+                'items': [(item_name, (x1,y1,x2,y2)), ...]
+                'devam': (x1,y1,x2,y2) or None
+                'prev': (x1,y1,x2,y2) or None
+                'next': (x1,y1,x2,y2) or None
+        """
+        # Koyu overlay
+        overlay = frame.copy()
+        cv2.rectangle(overlay, (0, 0), (self.w, self.h), (10, 10, 15), -1)
+        frame = cv2.addWeighted(overlay, 0.85, frame, 0.15, 0)
+
+        regions = {'items': [], 'devam': None, 'prev': None, 'next': None}
+
+        margin = 30
+        top_y = 20
+
+        # ---- BASLIK ----
+        equip_count = len(equipped_items)
+        title = "ENVANTER"
+        subtitle = sanitize_text(f"Savas icin silah sec ({equip_count}/4)")
+        (tw, _), _ = cv2.getTextSize(title, self.FONT_BOLD, 1.3, 3)
+        cv2.putText(frame, title, ((self.w - tw) // 2, top_y + 35),
+                    self.FONT_BOLD, 1.3, self.COLOR_TITLE, 3, cv2.LINE_AA)
+        (sw, _), _ = cv2.getTextSize(subtitle, self.FONT, 0.7, 2)
+        cv2.putText(frame, subtitle, ((self.w - sw) // 2, top_y + 65),
+                    self.FONT, 0.7, self.COLOR_TEXT_GOLD, 2, cv2.LINE_AA)
+
+        # ---- Yardimci esya sayisi ----
+        non_weapon_count = len([i for i in all_items if i not in all_weapons])
+        if non_weapon_count > 0:
+            nw_text = sanitize_text(f"Diger esyalar: {non_weapon_count}")
+            cv2.putText(frame, nw_text, (margin, top_y + 90),
+                        self.FONT, 0.5, self.COLOR_LABEL, 1, cv2.LINE_AA)
+
+        # ---- SAYFALAMA ----
+        total_weapons = len(all_weapons)
+        total_pages = max(1, (total_weapons + self.ITEMS_PER_PAGE - 1) // self.ITEMS_PER_PAGE)
+        page = min(page, total_pages - 1)
+        start_idx = page * self.ITEMS_PER_PAGE
+        end_idx = min(start_idx + self.ITEMS_PER_PAGE, total_weapons)
+        page_weapons = all_weapons[start_idx:end_idx]
+
+        # ---- ITEM SATIRLARI ----
+        item_area_top = top_y + 105
+        item_h = 62
+        item_gap = 8
+        item_x1 = margin
+        item_x2 = self.w - margin
+
+        for i, weapon in enumerate(page_weapons):
+            global_idx = start_idx + i
+            y1 = item_area_top + i * (item_h + item_gap)
+            y2 = y1 + item_h
+
+            is_equipped = weapon in equipped_items
+            is_hovered = (hovered_idx == i)
+
+            # Arka plan
+            if is_hovered:
+                bg_color = self.COLOR_ITEM_HOVER
+            else:
+                bg_color = self.COLOR_ITEM_BG
+
+            overlay2 = frame.copy()
+            cv2.rectangle(overlay2, (item_x1, y1), (item_x2, y2), bg_color, -1)
+            frame = cv2.addWeighted(overlay2, 0.7, frame, 0.3, 0)
+
+            # Cerceve (equipped ise renkli)
+            border_c = self.COLOR_EQUIPPED if is_equipped else (80, 80, 80)
+            thick = 2 if is_equipped else 1
+            cv2.rectangle(frame, (item_x1, y1), (item_x2, y2), border_c, thick)
+
+            # Equip ikonu
+            icon_x = item_x1 + 15
+            icon_y = y1 + item_h // 2
+            if is_equipped:
+                # Dolu yildiz
+                cv2.putText(frame, "[E]", (icon_x, icon_y + 8),
+                            self.FONT_BOLD, 0.65, self.COLOR_EQUIPPED, 2, cv2.LINE_AA)
+            else:
+                cv2.putText(frame, "[ ]", (icon_x, icon_y + 8),
+                            self.FONT, 0.6, self.COLOR_UNEQUIPPED, 1, cv2.LINE_AA)
+
+            # Silah adi
+            weapon_text = sanitize_text(weapon)
+            cv2.putText(frame, weapon_text, (icon_x + 55, icon_y + 5),
+                        self.FONT, 0.7, self.COLOR_TEXT_WHITE, 2, cv2.LINE_AA)
+
+            # Stat bilgisi (sag tarafa)
+            stats = weapon_stats_fn(weapon)
+            bonus = stats.get("bonus", 0)
+            wtype = stats.get("type", "fiziksel")
+            type_short = "BYS" if wtype == "buyusel" else "FZK"
+            stat_text = f"+{bonus} {type_short}"
+            (stw, _), _ = cv2.getTextSize(stat_text, self.FONT, 0.55, 1)
+            stat_color = (180, 140, 255) if wtype == "buyusel" else (255, 180, 100)
+            cv2.putText(frame, stat_text, (item_x2 - stw - 15, icon_y + 5),
+                        self.FONT, 0.55, stat_color, 1, cv2.LINE_AA)
+
+            # Dwell progress (hover + dwell durumunda)
+            if is_hovered and 0 < dwell_progress < 1.0:
+                bar_y = y2 - 5
+                bar_w = int((item_x2 - item_x1 - 10) * dwell_progress)
+                cv2.rectangle(frame, (item_x1 + 5, bar_y),
+                              (item_x1 + 5 + bar_w, bar_y + 4),
+                              self.COLOR_PROGRESS_BAR, -1)
+
+            # Region kaydet
+            regions['items'].append((weapon, (item_x1, y1, item_x2, y2)))
+
+        # ---- SAYFA NAVIGASYONU ----
+        nav_y = item_area_top + self.ITEMS_PER_PAGE * (item_h + item_gap) + 5
+        page_text = f"Sayfa {page + 1}/{total_pages}"
+        (ptw, _), _ = cv2.getTextSize(page_text, self.FONT, 0.6, 1)
+        cv2.putText(frame, page_text, ((self.w - ptw) // 2, nav_y + 20),
+                    self.FONT, 0.6, self.COLOR_LABEL, 1, cv2.LINE_AA)
+
+        if total_pages > 1:
+            # Onceki butonu
+            if page > 0:
+                prev_x1, prev_x2 = margin, margin + 120
+                prev_y1, prev_y2 = nav_y, nav_y + 35
+                overlay3 = frame.copy()
+                cv2.rectangle(overlay3, (prev_x1, prev_y1), (prev_x2, prev_y2),
+                              (60, 60, 80), -1)
+                frame = cv2.addWeighted(overlay3, 0.6, frame, 0.4, 0)
+                cv2.rectangle(frame, (prev_x1, prev_y1), (prev_x2, prev_y2),
+                              self.COLOR_BORDER, 1)
+                cv2.putText(frame, "< Onceki", (prev_x1 + 10, prev_y1 + 24),
+                            self.FONT, 0.55, self.COLOR_TEXT_WHITE, 1, cv2.LINE_AA)
+                regions['prev'] = (prev_x1, prev_y1, prev_x2, prev_y2)
+
+            # Sonraki butonu
+            if page < total_pages - 1:
+                next_x2 = self.w - margin
+                next_x1 = next_x2 - 120
+                next_y1, next_y2 = nav_y, nav_y + 35
+                overlay4 = frame.copy()
+                cv2.rectangle(overlay4, (next_x1, next_y1), (next_x2, next_y2),
+                              (60, 60, 80), -1)
+                frame = cv2.addWeighted(overlay4, 0.6, frame, 0.4, 0)
+                cv2.rectangle(frame, (next_x1, next_y1), (next_x2, next_y2),
+                              self.COLOR_BORDER, 1)
+                cv2.putText(frame, "Sonraki >", (next_x1 + 10, next_y1 + 24),
+                            self.FONT, 0.55, self.COLOR_TEXT_WHITE, 1, cv2.LINE_AA)
+                regions['next'] = (next_x1, next_y1, next_x2, next_y2)
+
+        # ---- DEVAM ET BUTONU ----
+        devam_w = 250
+        devam_h = 50
+        devam_x1 = (self.w - devam_w) // 2
+        devam_x2 = devam_x1 + devam_w
+        devam_y1 = self.h - 70
+        devam_y2 = devam_y1 + devam_h
+
+        dv_color = self.COLOR_DEVAM_HOVER if hovered_devam else self.COLOR_DEVAM_BG
+        overlay5 = frame.copy()
+        cv2.rectangle(overlay5, (devam_x1, devam_y1), (devam_x2, devam_y2),
+                      dv_color, -1)
+        frame = cv2.addWeighted(overlay5, 0.8, frame, 0.2, 0)
+        dv_border = (100, 255, 150) if hovered_devam else (80, 160, 100)
+        cv2.rectangle(frame, (devam_x1, devam_y1), (devam_x2, devam_y2),
+                      dv_border, 2)
+
+        devam_text = "DEVAM ET"
+        (dtw, _), _ = cv2.getTextSize(devam_text, self.FONT_BOLD, 0.85, 2)
+        cv2.putText(frame, devam_text,
+                    ((self.w - dtw) // 2, devam_y1 + 33),
+                    self.FONT_BOLD, 0.85, self.COLOR_TEXT_WHITE, 2, cv2.LINE_AA)
+
+        # Dwell progress (devam butonu)
+        if hovered_devam and 0 < dwell_progress < 1.0:
+            bar_w = int(devam_w * dwell_progress)
+            cv2.rectangle(frame, (devam_x1, devam_y2 - 5),
+                          (devam_x1 + bar_w, devam_y2),
+                          self.COLOR_PROGRESS_BAR, -1)
+
+        regions['devam'] = (devam_x1, devam_y1, devam_x2, devam_y2)
+
+        return frame, regions
