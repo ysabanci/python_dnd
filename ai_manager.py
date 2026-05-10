@@ -15,8 +15,8 @@ from openai import OpenAI
 class AdventureAI:
     """D&D macera hikayesi üreten yapay zeka yöneticisi."""
 
-    DEFAULT_MODEL = "gpt-4o"
-    DEFAULT_MAX_TOKENS =16384
+    DEFAULT_MODEL = "gpt-5.1"
+    DEFAULT_MAX_TOKENS = 32000
     def __init__(self, api_key: Optional[str] = None, model: str = DEFAULT_MODEL, max_tokens: int = DEFAULT_MAX_TOKENS):
         resolved_key = api_key or os.environ.get("OPENAI_API_KEY")
         if not resolved_key:

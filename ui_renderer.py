@@ -51,7 +51,7 @@ class GameUI:
 
     # Buyutulmus font olcekleri (uzaktan okunabilirlik) - %15-20 arttirildi
     FONT_SCALE_TITLE = 1.4
-    FONT_SCALE_STORY = 0.8
+    FONT_SCALE_STORY = 0.9
     FONT_SCALE_BTN = 0.75
     FONT_SCALE_BTN_LABEL = 0.55
     FONT_SCALE_HUD = 0.85
@@ -79,9 +79,9 @@ class GameUI:
         margin = 12
         gap = 10
 
-        # Hikaye alani (ust %33)
+        # Hikaye alani (ust %45)
         self.story_top = 55
-        self.story_bottom = int(self.h * 0.33)
+        self.story_bottom = int(self.h * 0.45)
 
         # HUD bandi (hikaye ile butonlar arasi)
         self.hud_y = self.story_bottom + 8
@@ -151,7 +151,7 @@ class GameUI:
 
         # Hikaye metni - satir kaydirma
         max_width = self.w - 50
-        line_height = 32
+        line_height = 36
         lines = self._wrap_text(story, self.FONT, self.FONT_SCALE_STORY,
                                 self.FONT_THICKNESS_THIN, max_width)
 
