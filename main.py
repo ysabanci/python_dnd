@@ -336,7 +336,33 @@ class DnDGame:
             print(f"[>] Lokasyon secildi: {choice_text} -> Oyun basliyor!")
 
     def _handle_normal_choice(self, choice_text: str) -> None:
-        """Normal oyun gidisatinda secim yapar."""
+        """Normal oyun gidisatinda secim yapar. Bekleyen ganimet varsa kontrol eder."""
+        # Bekleyen ganimet kontrolu
+        if self.state.pending_loot:
+            choice_lower = choice_text.lower()
+            loot_keywords = ("ganimet", "al", "topla", "esya", "silah",
+                             "kabul", "evet", "loot")
+            reject_keywords = ("birak", "reddet", "hayir", "devam",
+                               "gec", "birakma", "istemiyorum")
+            # Reddetme kontrolu (oncelikli)
+            is_reject = any(kw in choice_lower for kw in reject_keywords)
+            is_accept = any(kw in choice_lower for kw in loot_keywords)
+
+            if is_accept and not is_reject:
+                loot = self.state.pending_loot
+                self.state.character.inventory.append(loot)
+                print(f"[+] Ganimet alindi: {loot}")
+                # Silahsa ve yer varsa otomatik equip
+                if (loot not in self.state.NON_WEAPON_ITEMS
+                        and len(self.state.equipped_items) < 4):
+                    self.state.equipped_items.append(loot)
+                    print(f"[+] Otomatik equip: {loot}")
+                self.state.current_feedback = f"Ganimet alindi: {loot}!"
+            else:
+                print(f"[-] Ganimet reddedildi: {self.state.pending_loot}")
+            # Bekleyen ganimeti temizle (alinsin ya da alinmasin)
+            self.state.pending_loot = ""
+
         prompt = self.state.get_dynamic_prompt(choice_text)
         self.state.add_user_choice(prompt)
         self.state.is_waiting_for_ai = True

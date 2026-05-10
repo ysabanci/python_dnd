@@ -27,7 +27,7 @@ class DiceState(Enum):
 class DiceChallenge:
     """d20 zar atma mini oyunu."""
 
-    READY_DURATION = 3.0      # Hazirlik suresi (saniye)
+    READY_DURATION = 0        # Süre yok, sadece yumruk ile atilir
     ROLL_DURATION = 2.0       # Zar donme animasyonu suresi
     RESULT_DURATION = 2.5     # Sonuc gosterim suresi
 
@@ -61,8 +61,8 @@ class DiceChallenge:
         elapsed = time.time() - self.start_time
 
         if self.state == DiceState.READY:
-            # Oyuncu jest yaparsa veya sure dolarsa zarı at
-            if has_gesture or elapsed >= self.READY_DURATION:
+            # Sadece yumruk jesti ile zar atilir - sure yok
+            if has_gesture:
                 self._trigger_roll()
 
         elif self.state == DiceState.ROLLING:
@@ -124,9 +124,7 @@ class DiceChallenge:
                             60, (100, 180, 255))
 
         # Talimat
-        elapsed = time.time() - self.start_time
-        remaining = max(0, self.READY_DURATION - elapsed)
-        hint = f"Yumruk yap veya bekle! ({remaining:.0f}s)"
+        hint = "Yumruk yap ve zari at!"
         (hw, _), _ = cv2.getTextSize(hint, self.FONT, 0.7, 2)
         cv2.putText(frame, hint, ((self.w - hw) // 2, self.h // 2 + 130),
                     self.FONT, 0.7, (150, 255, 150), 2, cv2.LINE_AA)

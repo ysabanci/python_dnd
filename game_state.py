@@ -204,6 +204,9 @@ class GameState:
         self.dice_required: bool = False
         self.dice_option_key: str = ""  # Hangi butonun zar gerektirdigi
 
+        # ----- Bekleyen Ganimet (otomatik eklenmez, oyuncu secmeli) -----
+        self.pending_loot: str = ""  # AI'dan gelen ama henuz alinmamis esya
+
         # ----- AI Mesaj Geçmişi (Memory) -----
         self._message_history: List[Dict[str, str]] = []
         self._init_system_prompt()
@@ -320,22 +323,13 @@ class GameState:
             self.dice_required = False
             self.dice_option_key = ""
 
-        # ----- Yeni esya -----
+        # ----- Yeni esya (OTOMATIK EKLENMEZ - beklemede tutulur) -----
         yeni_esya = ai_response.get("yeni_esya", "")
         if yeni_esya and isinstance(yeni_esya, str) and yeni_esya.strip():
             yeni_esya = yeni_esya.strip()
             if yeni_esya not in self.character.inventory:
-                self.character.inventory.append(yeni_esya)
-                print(f"[+] Yeni esya bulundu: {yeni_esya}")
-                # Silahsa ve yer varsa otomatik equip
-                if yeni_esya not in self.NON_WEAPON_ITEMS and len(self.equipped_items) < 4:
-                    self.equipped_items.append(yeni_esya)
-                    print(f"[+] Otomatik equip: {yeni_esya}")
-                # Feedback'e ekle
-                if self.current_feedback:
-                    self.current_feedback += f" | Yeni esya: {yeni_esya}!"
-                else:
-                    self.current_feedback = f"Yeni esya bulundu: {yeni_esya}!"
+                self.pending_loot = yeni_esya
+                print(f"[~] Ganimet beklemede: {yeni_esya} (oyuncu secmeli)")
 
         # ----- Stat degisimleri (AI yonetimli) -----
         stat_degisim = ai_response.get("stat_degisim", {})
@@ -429,6 +423,10 @@ class GameState:
             elif cycle == 7:
                 prompt += "Boss'u yeniyoruz veya kaciyoruz! Savasi sonlandir ve odul ver. mod'u 'kesif' yap. "
             
+        # Bekleyen ganimet bilgisi
+        if self.pending_loot:
+            prompt += f"\nBEKLEYEN GANIMET: '{self.pending_loot}' - Oyuncuya bunu alip almayacagini sor. Seceneklerde 'Ganimeti al' ve 'Birak' gibi secenekler sun. yeni_esya BOSBIRAK cunku zaten beklemede."
+
         prompt += "\n" + self.get_character_summary()
         return prompt
 
@@ -739,9 +737,10 @@ class GameState:
             "   - Zar sonucu (1-20) oyuncu tarafindan atilacak ve sana iletilecek. Sonuca gore hikayeyi sekillendir.\n"
             "   - Yuksek zar (15-20): Tam basari. Dusuk zar (1-5): Feci basarisizlik. Orta (6-14): Kismi basari/basarisizlik.\n"
             "14. ESYA SISTEMI (ONEMLI):\n"
-            "   - yeni_esya: Oyuncuya verilecek yeni silah veya esya adi. Bos birakmayi tercih et, sadece ozel durumlarda ver.\n"
-            "   - Savas kazanildiktan sonra %30 ihtimalle dusmandan dusecek bir silah ver (ornek: 'Ates Kilici', 'Buzlu Balta', 'Zehirli Hancer', 'Isik Asasi').\n"
-            "   - Kesif sirasinda nadir olarak (her 5-6 turda bir) gizli bir silah veya esya buldur.\n"
+            "   - yeni_esya: Oyuncuya sunulacak yeni silah veya esya adi. Bos birakmayi tercih et, sadece ozel durumlarda ver.\n"
+            "   - KRITIK: yeni_esya'yi verdiginde oyuncu bunu OTOMATIK ALMAZ. Oyuncuya seceneklerde 'Ganimeti Al' veya benzer bir secenek sun.\n"
+            "   - Savas kazanildiktan sonra %30 ihtimalle dusmandan dusecek bir silah ver (ornek: 'Ates Kilici', 'Buzlu Balta').\n"
+            "   - Seceneklerde ganimeti alma ve reddetme secenegi olmali. Ornek: sol_ust='Ganimeti al', sag_ust='Birak ve devam et'.\n"
             "   - Verilen silahlar tematik olsun (Buzul Sarayi'nda 'Buz Kilici', Ruhlar Cehennemi'nde 'Lanetli Balta' gibi).\n"
             "   - Ayni esyayi tekrar verme. Envantere bak ve farkli seyler ver.\n"
             "15. ISTATISTIK SISTEMI (stat_degisim):\n"
