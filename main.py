@@ -23,6 +23,7 @@ from ui_renderer import GameUI
 from shape_challenge import ShapeChallenge, ShapeType
 from fist_challenge import FistChallenge
 from music_manager import MusicManager
+from dice_challenge import DiceChallenge
 
 
 class DnDGame:
@@ -35,6 +36,8 @@ class DnDGame:
     PHASE_SHAPE_CHALLENGE = "shape_challenge"
     PHASE_FIST_CHALLENGE = "fist_challenge"
     PHASE_ENEMY_ATTACK = "enemy_attack"
+    PHASE_WEAPON_SELECT = "weapon_select"
+    PHASE_DICE_ROLL = "dice_roll"
 
     SHAPE_TYPES = [ShapeType.TRIANGLE, ShapeType.SQUARE, ShapeType.CIRCLE,
                    ShapeType.RECTANGLE, ShapeType.INFINITY]
@@ -71,9 +74,17 @@ class DnDGame:
         print("[*] Muzik sistemi hazirlaniyor...")
         self.music = MusicManager()
 
+        print("[*] Zar challenge modulu hazirlaniyor...")
+        self.dice_challenge = DiceChallenge(self.tracker.frame_width, self.tracker.frame_height)
+
         # ----- Oyun Fazı -----
         self.current_phase = self.PHASE_NORMAL
         self._pending_combat_choice = ""
+
+        # ----- Silah Secim Fazi -----
+        self._weapon_select_options: list = []
+        self._selected_weapon: str = ""
+        self._weapon_combat_action: str = ""
 
         # ----- Dusman Saldiri Fazi -----
         self._enemy_attack_start: float = 0.0
@@ -152,6 +163,20 @@ class DnDGame:
                         break
                     continue
 
+                # 4d) Silah secim fazi aktif mi?
+                if self.current_phase == self.PHASE_WEAPON_SELECT:
+                    self._handle_weapon_select(frame)
+                    if cv2.waitKey(1) & 0xFF == ord("q"):
+                        break
+                    continue
+
+                # 4e) Zar atma fazi aktif mi?
+                if self.current_phase == self.PHASE_DICE_ROLL:
+                    self._handle_dice_roll(frame)
+                    if cv2.waitKey(1) & 0xFF == ord("q"):
+                        break
+                    continue
+
                 # 5) Normal oyun akisi - El takibi
                 finger_pos = self.tracker.detect_finger(frame)
 
@@ -185,7 +210,16 @@ class DnDGame:
                     elif self.state.current_mode == "savas":
                         self._start_combat_challenge(choice_text)
                     else:
-                        self._handle_normal_choice(choice_text)
+                        # Zar gerektiren secenek mi kontrol et
+                        if (self.state.dice_required
+                                and qid == self.state.dice_option_key):
+                            self.dice_challenge.start_challenge(choice_text)
+                            self.current_phase = self.PHASE_DICE_ROLL
+                            self.state.dice_required = False
+                            self.state.dice_option_key = ""
+                            print(f"[>] Zar atma tetiklendi: {choice_text}")
+                        else:
+                            self._handle_normal_choice(choice_text)
 
                 # 7) Arayüzü çiz
                 frame = self.ui.draw_overlay(frame, 0.35)
@@ -199,7 +233,8 @@ class DnDGame:
                                          self.state.current_location, self.state.current_mode,
                                          self.state.enemy_hp, self.state.enemy_max_hp)
                 frame = self.ui.draw_buttons(frame, self.state.current_options,
-                                             hover_quadrant, progress, self.state.current_mode)
+                                             hover_quadrant, progress, self.state.current_mode,
+                                             self.state.dice_option_key if self.state.dice_required else "")
 
                 if finger_pos:
                     frame = self.ui.draw_finger_cursor(frame, finger_pos)
@@ -295,10 +330,37 @@ class DnDGame:
         self.ai.request_story(history)
 
     def _start_combat_challenge(self, choice_text: str) -> None:
-        """Savas modunda secim yapildiginda rastgele challenge baslatir."""
+        """Savas modunda secim yapildiginda silah secimi veya challenge baslatir."""
         self._pending_combat_choice = choice_text
         self.tracker.reset_selection()
 
+        action_lower = choice_text.lower()
+        is_attack = action_lower in ("saldir", "saldiri", "buyu")
+
+        if is_attack:
+            # Saldiri/Buyu: once silah sec, sonra challenge
+            weapons = self.state.get_combat_weapons()
+            self._weapon_select_options = weapons
+            self._weapon_combat_action = choice_text
+
+            # Silah seceneklerini butonlara ata
+            option_keys = ["sol_ust", "sag_ust", "sol_alt", "sag_alt"]
+            self.state.current_options = {}
+            for i, key in enumerate(option_keys):
+                if i < len(weapons):
+                    self.state.current_options[key] = weapons[i]
+                else:
+                    self.state.current_options[key] = ""
+            self.state.active_option_count = min(len(weapons), 4)
+            self.state.current_story = f"{choice_text} icin silahini sec!"
+            self.current_phase = self.PHASE_WEAPON_SELECT
+            print(f"[>] Silah secim fazi basladi: {weapons}")
+        else:
+            # Savunma/Kacis: direkt challenge
+            self._start_actual_challenge(choice_text)
+
+    def _start_actual_challenge(self, choice_text: str) -> None:
+        """Rastgele challenge (sekil veya yumruk) baslatir."""
         # Rastgele: %60 sekil cizme, %40 yumruk challenge
         if random.random() < 0.6:
             shape = random.choice(self.SHAPE_TYPES)
@@ -309,6 +371,18 @@ class DnDGame:
             self.fist_challenge.start_challenge(choice_text)
             self.current_phase = self.PHASE_FIST_CHALLENGE
             print(f"[>] Yumruk challenge basladi - {choice_text}")
+
+    def _restore_combat_options(self) -> None:
+        """Savas modunda standart secenekleri geri yukler (silah seciminden sonra)."""
+        if self.state.current_mode == "savas":
+            self.state.current_options = {
+                "sol_ust": "Saldir",
+                "sag_ust": "Savun",
+                "sol_alt": "Kac",
+                "sag_alt": "Buyu",
+            }
+            self.state.active_option_count = 4
+            self.state.current_story = "Savas devam ediyor! Hamleni sec."
 
     # ------------------------------------------------------------------ #
     #  SIRAS TABANLI SAVAS MEKANIGI                                       #
@@ -371,8 +445,10 @@ class DnDGame:
             self.fist_challenge.reset()
             return
 
-        # Kacis basariliysa -> AI'a bildir
-        if is_flee and accuracy >= 70:
+        # Kacis basariliysa -> AI'a bildir (sinif bonusuyla esik kontrol)
+        class_bonus = self.state.get_class_bonus()
+        flee_threshold = class_bonus.get("flee_threshold", 70)
+        if is_flee and accuracy >= flee_threshold:
             self._send_combat_result(accuracy, action)
             self.shape_challenge.reset()
             self.fist_challenge.reset()
@@ -385,6 +461,7 @@ class DnDGame:
             print("[!] EKSTRA TUR kazanildi!")
             # Direkt oyuncunun sirasina don (dusman saldiramaz)
             self.current_phase = self.PHASE_NORMAL
+            self._restore_combat_options()
             self.shape_challenge.reset()
             self.fist_challenge.reset()
             return
@@ -400,27 +477,43 @@ class DnDGame:
         Saldiri/Buyu sonucunu isler.
 
         Challenge sonucu SADECE dusmana verilen hasari belirler.
+        Silah bonusu + sinif bonusu uygulanir.
         Oyuncuya hasar VERILMEZ - hasar sadece dusman saldiri fazindan gelir.
         """
+        # Silah ve sinif bonuslarini al
+        weapon_stats = self.state.get_weapon_stats(self._selected_weapon)
+        class_bonus = self.state.get_class_bonus()
+        weapon_bonus = weapon_stats.get("bonus", 0)
+        weapon_type = weapon_stats.get("type", "fiziksel")
+
+        # Sinif carpani: Savasci fiziksel, Buyucu buyusel
+        action_lower = action.lower()
+        if action_lower == "buyu" or weapon_type == "buyusel":
+            class_mult = class_bonus.get("magic_mult", 1.0)
+        else:
+            class_mult = class_bonus.get("attack_mult", 1.0)
+
         if is_shape and accuracy >= self.CRITICAL_HIT_THRESHOLD:
             # KRITIK VURUS! (%85+ sadece sekil challenge)
-            base_dmg = random.randint(30, 50)
-            enemy_dmg = int(base_dmg * 1.5)
+            base_dmg = random.randint(30, 50) + weapon_bonus
+            enemy_dmg = int(base_dmg * 1.5 * class_mult)
             self.state.enemy_hp = max(0, self.state.enemy_hp - enemy_dmg)
             self.state.current_feedback = f"KRITIK VURUS! Dusmana -{enemy_dmg} hasar!"
-            print(f"[!!] KRITIK VURUS! Dusmana -{enemy_dmg}")
+            print(f"[!!] KRITIK VURUS! Dusmana -{enemy_dmg} (silah: {self._selected_weapon})")
         elif accuracy >= 70:
             # Basarili saldiri
-            enemy_dmg = random.randint(25, 40)
+            base_dmg = random.randint(25, 40) + weapon_bonus
+            enemy_dmg = int(base_dmg * class_mult)
             self.state.enemy_hp = max(0, self.state.enemy_hp - enemy_dmg)
             self.state.current_feedback = f"Basarili {action}! Dusmana -{enemy_dmg} hasar!"
         elif accuracy >= 40:
-            # Kismi basari: az hasar ver (oyuncu hasar almaz, dusman saldiri fazinda alacak)
-            enemy_dmg = random.randint(10, 20)
+            # Kismi basari: az hasar ver
+            base_dmg = random.randint(10, 20) + weapon_bonus // 2
+            enemy_dmg = int(base_dmg * class_mult)
             self.state.enemy_hp = max(0, self.state.enemy_hp - enemy_dmg)
             self.state.current_feedback = f"Kismi basari! Dusmana -{enemy_dmg} hasar."
         else:
-            # Basarisiz: dusmana hasar yok (oyuncu hasari dusman fazinda alacak)
+            # Basarisiz: dusmana hasar yok
             self.state.current_feedback = f"Basarisiz {action}! Dusman saldirisi geliyor!"
 
     def _process_defense(self, accuracy: float) -> None:
@@ -459,9 +552,12 @@ class DnDGame:
         Kacis sonucunu isler.
 
         Kacis challenge'i ASLA dogrudan hasar vermez.
-        Basarisiz kacista dusman saldiri fazinda hasar gelir.
+        Hirsiz sinifi icin esik %40'a duser.
         """
-        if accuracy >= 70:
+        class_bonus = self.state.get_class_bonus()
+        flee_threshold = class_bonus.get("flee_threshold", 70)
+
+        if accuracy >= flee_threshold:
             self.state.current_feedback = "Basariyla kactin!"
         else:
             # Basarisiz: kacilamadi (hasar dusman fazinda gelecek)
@@ -473,6 +569,10 @@ class DnDGame:
 
     def _start_enemy_attack(self) -> None:
         """Dusman saldiri fazini baslatir (3 saniye animasyon)."""
+        # Sinif savunma bonusu (Okcu: %20 hasar azaltma)
+        class_bonus = self.state.get_class_bonus()
+        defense_reduction = class_bonus.get("defense_reduction", 0.0)
+
         if self._defense_blocked:
             # Basarili savunma: dusman saldirisi engellendi, hasar 0
             self._enemy_attack_damage = 0
@@ -480,11 +580,16 @@ class DnDGame:
         elif self._defense_partial:
             # Kismi savunma: hasar %50 azaltildi
             full_dmg = random.randint(8, 22)
-            self._enemy_attack_damage = full_dmg // 2
+            reduced = int(full_dmg * (1.0 - defense_reduction))
+            self._enemy_attack_damage = reduced // 2
             print(f"[>] Dusman saldiri fazi basladi! KISMI SAVUNMA - Hasar: {self._enemy_attack_damage} (tam: {full_dmg})")
         else:
-            self._enemy_attack_damage = random.randint(8, 22)
-            print(f"[>] Dusman saldiri fazi basladi! Hasar: {self._enemy_attack_damage}")
+            full_dmg = random.randint(8, 22)
+            self._enemy_attack_damage = int(full_dmg * (1.0 - defense_reduction))
+            if defense_reduction > 0:
+                print(f"[>] Dusman saldiri fazi basladi! Hasar: {self._enemy_attack_damage} (sinif bonusu: -{defense_reduction*100:.0f}%)")
+            else:
+                print(f"[>] Dusman saldiri fazi basladi! Hasar: {self._enemy_attack_damage}")
         self._enemy_attack_start = time.time()
         self._enemy_attack_applied = False
         self.current_phase = self.PHASE_ENEMY_ATTACK
@@ -539,6 +644,7 @@ class DnDGame:
 
             # Sira tekrar oyuncuya geciyor
             self.current_phase = self.PHASE_NORMAL
+            self._restore_combat_options()
             if self._defense_blocked:
                 self.state.current_feedback = (
                     "Mukemmel savunma! Dusman saldirisi engellendi! "
@@ -658,8 +764,115 @@ class DnDGame:
         return ""
 
     # ------------------------------------------------------------------ #
-    #  AI & RESTART                                                       #
+    #  SILAH SECIM VE ZAR HANDLER'LARI                                     #
     # ------------------------------------------------------------------ #
+
+    def _handle_weapon_select(self, frame: np.ndarray) -> None:
+        """Silah secim fazini yonetir (saldiri/buyu oncesi)."""
+        finger_pos = self.tracker.detect_finger(frame)
+
+        hover_quadrant = None
+        progress = 0.0
+        selected = None
+
+        if finger_pos:
+            btn_qid = self.ui.get_quadrant_from_button(
+                finger_pos[0], finger_pos[1], self.state.current_options)
+            if btn_qid:
+                qmap = {"sol_ust": Quadrant.SOL_UST, "sag_ust": Quadrant.SAG_UST,
+                        "sol_alt": Quadrant.SOL_ALT, "sag_alt": Quadrant.SAG_ALT}
+                q_enum = qmap.get(btn_qid)
+                selected = self.tracker.update_dwell(q_enum)
+                hover_quadrant = btn_qid
+                progress = self.tracker.get_dwell_progress()
+            else:
+                self.tracker.update_dwell(None)
+        else:
+            self.tracker.update_dwell(None)
+
+        # Secim yapildiysa
+        if selected is not None:
+            qmap_rev = {Quadrant.SOL_UST: "sol_ust", Quadrant.SAG_UST: "sag_ust",
+                        Quadrant.SOL_ALT: "sol_alt", Quadrant.SAG_ALT: "sag_alt"}
+            key = qmap_rev.get(selected, "")
+            weapon_name = self.state.current_options.get(key, "")
+            if weapon_name:
+                self._selected_weapon = weapon_name
+                self.state.equipped_weapon = weapon_name
+                self.tracker.reset_selection()
+                print(f"[>] Silah secildi: {weapon_name}")
+                # Challenge'i baslat
+                self._start_actual_challenge(self._weapon_combat_action)
+                return
+
+        # UI ciz
+        frame = self.ui.draw_overlay(frame, 0.15)
+        frame = self.ui.draw_story_text(frame, self.state.current_story,
+                                         self.state.current_feedback,
+                                         self.state.current_mode)
+        frame = self.ui.draw_buttons(frame, self.state.current_options,
+                                      hover_quadrant, progress,
+                                      self.state.active_option_count)
+        if finger_pos:
+            frame = self.ui.draw_finger_cursor(frame, finger_pos)
+        frame = self.tracker.draw_hand_landmarks(frame)
+
+        # HUD
+        frame = self.ui.draw_hud(frame, self.state.character.hp,
+                                  self.state.character.max_hp,
+                                  self.state.character.gold,
+                                  self.state.turn_count,
+                                  self.state.current_location,
+                                  self.state.current_mode,
+                                  self.state.enemy_hp,
+                                  self.state.enemy_max_hp)
+
+        cv2.imshow(self.WINDOW_NAME, frame)
+
+    def _handle_dice_roll(self, frame: np.ndarray) -> None:
+        """Zar atma fazini yonetir."""
+        # El tespiti (yumruk jesti zari tetikler)
+        self.tracker.detect_finger(frame)
+        _, is_fist = self.tracker.detect_fist(frame)
+
+        self.dice_challenge.update(has_gesture=is_fist)
+
+        # Challenge UI ciz
+        frame = self.dice_challenge.draw(frame)
+
+        # El iskeletini ciz
+        frame = self.tracker.draw_hand_landmarks(frame)
+
+        cv2.imshow(self.WINDOW_NAME, frame)
+
+        # Challenge tamamlandi mi?
+        if self.dice_challenge.is_done():
+            dice_result, action_text = self.dice_challenge.get_result()
+            print(f"[>] Zar sonucu: {dice_result} - {action_text}")
+
+            # Zar sonucunu AI'a gonder
+            prompt = self.state.get_dynamic_prompt(action_text)
+            prompt += (
+                f"\nZAR SONUCU: Oyuncu d20 zari atti ve {dice_result} geldi. "
+            )
+            if dice_result >= 15:
+                prompt += "YUKSEK ZAR! Bu eylem cok basarili olsun. Oyuncuyu odullendir."
+            elif dice_result >= 10:
+                prompt += "ORTA ZAR. Eylem basarili ama muhtemelen ekstra bir odulu olmadi."
+            elif dice_result >= 6:
+                prompt += "DUSUK ZAR. Eylem kismi basarili olsun. Bazi sorunlar ciksin."
+            elif dice_result == 1:
+                prompt += "KRITIK BASARISIZLIK! Eylem feci sekilde basarisiz olsun. Oyuncuya zarar gelsin!"
+            else:
+                prompt += "BASARISIZ ZAR. Eylem basarisiz olsun. Olumsuz sonuc dogursun."
+
+            self.state.add_user_choice(prompt)
+            self.state.is_waiting_for_ai = True
+            history = self.state.get_message_history()
+            self.ai.request_story(history)
+
+            self.dice_challenge.reset()
+            self.current_phase = self.PHASE_NORMAL
 
     def _send_combat_result(self, accuracy: float, action: str) -> None:
         """Savas sonucunu AI'a gonderir."""
@@ -715,8 +928,10 @@ class DnDGame:
         self.current_phase = self.PHASE_NORMAL
         self.shape_challenge.reset()
         self.fist_challenge.reset()
+        self.dice_challenge.reset()
         self._extra_turn_active = False
         self._last_music_mode = ""
+        self._selected_weapon = ""
         self.music.stop()
 
 

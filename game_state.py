@@ -81,6 +81,42 @@ class GameState:
         "Hirsiz": ["Gizli Hancer", "Zehirli Bicak", "Garoz Seti", "Duman Bombalari"],
     }
 
+    # Silah istatistikleri: hasar bonusu ve tipi (fiziksel/buyusel)
+    WEAPON_STATS = {
+        # Savasci silahlari
+        "Celik Kilic":       {"bonus": 5,  "type": "fiziksel"},
+        "Savas Baltasi":     {"bonus": 8,  "type": "fiziksel"},
+        "Mizrak":            {"bonus": 4,  "type": "fiziksel"},
+        "Cift El Kilici":    {"bonus": 10, "type": "fiziksel"},
+        # Buyucu silahlari
+        "Ates Asasi":        {"bonus": 7,  "type": "buyusel"},
+        "Buz Asasi":         {"bonus": 6,  "type": "buyusel"},
+        "Yildirim Degnek":   {"bonus": 9,  "type": "buyusel"},
+        "Karanlik Grimoire": {"bonus": 12, "type": "buyusel"},
+        # Okcu silahlari
+        "Uzun Yay":          {"bonus": 6,  "type": "fiziksel"},
+        "Arbalete":          {"bonus": 8,  "type": "fiziksel"},
+        "Cift Kisa Yay":     {"bonus": 5,  "type": "fiziksel"},
+        "Zehirli Ok Seti":   {"bonus": 7,  "type": "buyusel"},
+        # Hirsiz silahlari
+        "Gizli Hancer":      {"bonus": 6,  "type": "fiziksel"},
+        "Zehirli Bicak":     {"bonus": 7,  "type": "buyusel"},
+        "Garoz Seti":        {"bonus": 4,  "type": "fiziksel"},
+        "Duman Bombalari":   {"bonus": 5,  "type": "buyusel"},
+        # Varsayilan
+        "Pasli Kilic":       {"bonus": 2,  "type": "fiziksel"},
+        "Mesale":            {"bonus": 1,  "type": "fiziksel"},
+        "Yumruk":            {"bonus": 0,  "type": "fiziksel"},
+    }
+
+    # Sinif bonuslari
+    CLASS_BONUS = {
+        "Savasci": {"attack_mult": 1.25, "magic_mult": 1.0,  "flee_threshold": 70, "defense_reduction": 0.0},
+        "Buyucu":  {"attack_mult": 1.0,  "magic_mult": 1.30, "flee_threshold": 70, "defense_reduction": 0.0},
+        "Okcu":    {"attack_mult": 1.0,  "magic_mult": 1.0,  "flee_threshold": 70, "defense_reduction": 0.20},
+        "Hirsiz":  {"attack_mult": 1.0,  "magic_mult": 1.0,  "flee_threshold": 40, "defense_reduction": 0.0},
+    }
+
     POSSIBLE_LOCATIONS = [
         "Karanlik Magara", "Gizemli Orman", "Kaotik Uzay", "Ruhlar Cehennemi",
         "Sonsuz Col", "Batan Sehir", "Ejderha Yuvasi", "Buzul Sarayi",
@@ -124,6 +160,13 @@ class GameState:
         # ----- Dusman HP (savas modu icin) -----
         self.enemy_hp: int = 0
         self.enemy_max_hp: int = 100
+
+        # ----- Silah ve Envanter -----
+        self.equipped_weapon: str = ""
+
+        # ----- Zar Mekaniği -----
+        self.dice_required: bool = False
+        self.dice_option_key: str = ""  # Hangi butonun zar gerektirdigi
 
         # ----- AI Mesaj Geçmişi (Memory) -----
         self._message_history: List[Dict[str, str]] = []
@@ -183,11 +226,32 @@ class GameState:
         # Secenekleri ata (kullanilmayanlar bos kalir)
         option_keys = ["sol_ust", "sag_ust", "sol_alt", "sag_alt"]
         self.current_options = {}
+        actual_count = 0
         for i, key in enumerate(option_keys):
             if i < secenek_sayisi:
-                self.current_options[key] = secenekler.get(key, "...")
+                val = secenekler.get(key, "")
+                # '...' veya bos secenekleri filtrele
+                if val and val.strip() != "..." and val.strip() != "":
+                    self.current_options[key] = val
+                    actual_count += 1
+                else:
+                    self.current_options[key] = ""
             else:
                 self.current_options[key] = ""
+
+        # Gercek secenek sayisini guncelle (filtrelenmis)
+        if actual_count < secenek_sayisi:
+            # Secenekleri yeniden duz sirala (bosluksuz)
+            filled = [(k, v) for k, v in self.current_options.items() if v]
+            self.current_options = {}
+            for i, key in enumerate(option_keys):
+                if i < len(filled):
+                    self.current_options[key] = filled[i][1]
+                else:
+                    self.current_options[key] = ""
+            actual_count = len(filled)
+
+        self.active_option_count = max(2, actual_count)
 
         self.turn_count += 1
 
@@ -211,6 +275,27 @@ class GameState:
         gold_change = ai_response.get("altin_degisim", 0)
         if isinstance(gold_change, (int, float)) and gold_change != 0:
             self.modify_gold(int(gold_change))
+
+        # ----- Zar mekani\u011fi -----
+        self.dice_required = bool(ai_response.get("zar_gerekli", False))
+        self.dice_option_key = ai_response.get("zar_secenegi", "")
+        # Savas modunda zar kullanilmaz
+        if self.current_mode == "savas":
+            self.dice_required = False
+            self.dice_option_key = ""
+
+        # ----- Yeni esya -----
+        yeni_esya = ai_response.get("yeni_esya", "")
+        if yeni_esya and isinstance(yeni_esya, str) and yeni_esya.strip():
+            yeni_esya = yeni_esya.strip()
+            if yeni_esya not in self.character.inventory:
+                self.character.inventory.append(yeni_esya)
+                print(f"[+] Yeni esya bulundu: {yeni_esya}")
+                # Feedback'e ekle
+                if self.current_feedback:
+                    self.current_feedback += f" | Yeni esya: {yeni_esya}!"
+                else:
+                    self.current_feedback = f"Yeni esya bulundu: {yeni_esya}!"
 
         # Yedek: hikaye metni icindeki tag'lerden de oku
         self._parse_hp_changes(ai_response)
@@ -352,6 +437,44 @@ class GameState:
     def apply_weapon_choice(self, weapon: str) -> None:
         """Baslangic silahini uygular."""
         self.character.inventory = [weapon, "Mesale"]
+        self.equipped_weapon = weapon
+
+    def get_weapon_stats(self, weapon: str = "") -> dict:
+        """Silah istatistiklerini dondurur. Bilinmeyen silahlar icin otomatik uretir."""
+        if not weapon:
+            weapon = self.equipped_weapon
+        stats = self.WEAPON_STATS.get(weapon)
+        if stats:
+            return stats
+        # AI tarafindan verilen dinamik silah - isimden tahmin et
+        weapon_lower = weapon.lower()
+        magic_keywords = ("asa", "degnek", "grimoire", "buyu", "ates", "buz",
+                          "yildirim", "isik", "karanlik", "ruh", "lanetli",
+                          "zehir", "sihirli")
+        is_magic = any(kw in weapon_lower for kw in magic_keywords)
+        # Dinamik silahlar genelde iyi olur (odul oldugu icin)
+        return {"bonus": 8, "type": "buyusel" if is_magic else "fiziksel"}
+
+    def get_class_bonus(self) -> dict:
+        """Karakter sinifinin bonus verilerini dondurur."""
+        return self.CLASS_BONUS.get(
+            self.character.char_class,
+            {"attack_mult": 1.0, "magic_mult": 1.0, "flee_threshold": 70, "defense_reduction": 0.0}
+        )
+
+    # Silah olmayan esyalar (bu listedekiler silah seciminde gosterilmez)
+    NON_WEAPON_ITEMS = {"Mesale", "Harita", "Iksir", "Anahtar", "Pusula",
+                        "Ip", "Canta", "Kitap", "Mum"}
+
+    def get_combat_weapons(self) -> list:
+        """Envanterdeki savas silahlarini dondurur (yardimci esyalar haric)."""
+        weapons = []
+        for item in self.character.inventory:
+            if item not in self.NON_WEAPON_ITEMS:
+                weapons.append(item)
+        if not weapons:
+            weapons = ["Yumruk"]  # Fallback
+        return weapons
 
     def get_weapons_for_class(self, class_name: str) -> list:
         """Sinifa gore silah seceneklerini dondurur."""
@@ -433,13 +556,20 @@ class GameState:
             "3. Yanit yapisi:\n"
             '{"hikaye_metni": "...", "feedback": "...", "mod": "kesif", "secenek_sayisi": 4, '
             '"hp_degisim": 0, "altin_degisim": 0, '
-            '"secenekler": {"sol_ust": "...", "sag_ust": "...", "sol_alt": "...", "sag_alt": "..."}}\n'
+            '"zar_gerekli": false, "zar_secenegi": "", '
+            '"yeni_esya": "", '
+            '"secenekler": {"sol_ust": "Ilerle", "sag_ust": "Etrafina bak", "sol_alt": "Geri don", "sag_alt": "Bekle"}}\n'
             "4. Hikaye 3-4 cumleyi, secenekler 5-6 kelimeyi gecmesin.\n"
             "5. MOD ALANI (ZORUNLU):\n"
-            "   - 'kesif': Normal kesif. secenek_sayisi 2-4 arasi. Duruma gore karar ver: bazen 2, bazen 3, bazen 4 secenek sun.\n"
-            "   - 'savas': Dusman ile mucadele. secenek_sayisi DAİMA 4. Secenekler KESINLIKLE: sol_ust='Saldir', sag_ust='Savun', sol_alt='Kac', sag_alt='Buyu' olsun.\n"
-            "   - 'diyalog': NPC konusmasi. secenek_sayisi 2-4 arasi. Duruma gore az veya cok secenek sun.\n"
-            "6. secenek_sayisi: 2 ise sadece sol_ust ve sag_ust dolu olsun. 3 ise sol_ust, sag_ust, sol_alt dolu olsun. 4 ise hepsi dolu olsun.\n"
+            "   - 'kesif': Normal kesif. secenek_sayisi 2-4 arasi. Duruma gore karar ver.\n"
+            "   - 'savas': Dusman ile mucadele. secenek_sayisi DAIMA 4. Secenekler KESINLIKLE: sol_ust='Saldir', sag_ust='Savun', sol_alt='Kac', sag_alt='Buyu' olsun.\n"
+            "   - 'diyalog': NPC konusmasi. secenek_sayisi 2-4 arasi.\n"
+            "6. SECENEK KURALLARI (COK ONEMLI):\n"
+            "   - ASLA '...' yazma! Her secenek GERCEK, ANLAMLI bir aksiyon olmali.\n"
+            "   - secenek_sayisi=2: sol_ust ve sag_ust DOLU, sol_alt ve sag_alt BOS string olmali.\n"
+            "   - secenek_sayisi=3: sol_ust, sag_ust ve sol_alt DOLU, sag_alt BOS string.\n"
+            "   - secenek_sayisi=4: HEPSI dolu.\n"
+            "   - Bos olan secenekler icin deger olarak bos string '' kullan, '...' KULLANMA.\n"
             "7. hp_degisim: HP degisimi (negatif=hasar, pozitif=iyilesme). Savas disinda genelde 0.\n"
             "8. altin_degisim: Altin degisimi. Odul/harcama durumunda kullan.\n"
             "9. feedback: Oyuncunun son eyleminin kisa sonucu.\n"
@@ -447,11 +577,24 @@ class GameState:
             "11. hp_degisim ve altin_degisim DAIMA sayi olmali (0, -10, +20 gibi). Bos birakma.\n"
             "12. SAVAS KURALLARI (COK ONEMLI):\n"
             "   - Savas modunda dusman HER TUR saldirsin. hp_degisim NEGATIF olmali (-5 ile -25 arasi).\n"
-            "   - Oyuncu 'Savun' secerse ve başarılı olursa hasar almayacak. Eğer kısmi başarılı ise düşmanın bir sonraki round vereceği hasar azalacak. Eğer başarısız ise düşman bir sonraki round normal hasar verecek.\n"
+            "   - Oyuncu 'Savun' secerse ve basarili olursa hasar almayacak. Kismi basariliysa hasar azalir. Basarisiz ise tam hasar.\n"
             "   - Oyuncu 'Saldir' secerse dusmana hasar verir.\n"
-            "   - Oyuncu 'Kac' secerse %50 sans ile kacabilir (basariliysa mod='kesif' yap)\n"
+            "   - Oyuncu 'Kac' secerse sans ile kacabilir (basariliysa mod='kesif' yap)\n"
             "   - Oyuncu 'Buyu' secerse guclu saldiri yapar.\n"
-            "   - Savas tehlikeli olmali! Oyuncu savunma yapmazsa cok hasar alsin."
+            "   - Savas tehlikeli olmali! Oyuncu savunma yapmazsa cok hasar alsin.\n"
+            "13. ZAR MEKANIĞI (ONEMLI):\n"
+            "   - Kesif ve diyalog modlarinda bazi secenekler ZAR ATMA gerektirebilir.\n"
+            "   - Ornegin: 'Kapiyi zorla ac', 'Tirmanmayi dene', 'Kilidi ac', 'Ikna etmeye calis' gibi beceri gerektiren secenekler.\n"
+            "   - Zar gerektiren bir secenek sunuyorsan, zar_gerekli=true ve zar_secenegi='o secenegin key adi' (sol_ust, sag_ust, sol_alt, sag_alt) yap.\n"
+            "   - Her turda en fazla 1 secenek zar gerektirebilir. Savas modunda zar KULLANMA.\n"
+            "   - Zar sonucu (1-20) oyuncu tarafindan atilacak ve sana iletilecek. Sonuca gore hikayeyi sekillendir.\n"
+            "   - Yuksek zar (15-20): Tam basari. Dusuk zar (1-5): Feci basarisizlik. Orta (6-14): Kismi basari/basarisizlik.\n"
+            "14. ESYA SISTEMI (ONEMLI):\n"
+            "   - yeni_esya: Oyuncuya verilecek yeni silah veya esya adi. Bos birakmayi tercih et, sadece ozel durumlarda ver.\n"
+            "   - Savas kazanildiktan sonra %30 ihtimalle dusmandan dusecek bir silah ver (ornek: 'Ates Kilici', 'Buzlu Balta', 'Zehirli Hancer', 'Isik Asasi').\n"
+            "   - Kesif sirasinda nadir olarak (her 5-6 turda bir) gizli bir silah veya esya buldur.\n"
+            "   - Verilen silahlar tematik olsun (Buzul Sarayi'nda 'Buz Kilici', Ruhlar Cehennemi'nde 'Lanetli Balta' gibi).\n"
+            "   - Ayni esyayi tekrar verme. Envantere bak ve farkli seyler ver."
         )
 
         self._message_history.append({

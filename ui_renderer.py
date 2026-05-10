@@ -190,8 +190,9 @@ class GameUI:
     def draw_buttons(self, frame: np.ndarray, options: Dict[str, str],
                      hover_quadrant: Optional[str] = None,
                      progress: float = 0.0,
-                     mode: str = "kesif") -> np.ndarray:
-        """4 buton cizer. Savas modunda renkli butonlar."""
+                     mode: str = "kesif",
+                     dice_option_key: str = "") -> np.ndarray:
+        """4 buton cizer. Savas modunda renkli butonlar. Zar gerektiren butona ikon koyar."""
 
         # Savas modunda buton renkleri (BGR)
         COMBAT_COLORS = {
@@ -273,6 +274,15 @@ class GameUI:
                 cv2.rectangle(frame, (x1 + 4, bar_y),
                               (x1 + 4 + bar_total_w, bar_y + bar_h),
                               self.COLOR_BORDER, 1)
+
+            # Zar ikonu (zar gerektiren butonda)
+            if dice_option_key == qid:
+                zar_text = "[ZAR]"
+                (zw, zh), _ = cv2.getTextSize(zar_text, self.FONT, 0.5, 1)
+                zx = x2 - zw - 8
+                zy = y1 + zh + 6
+                cv2.putText(frame, zar_text, (zx, zy), self.FONT,
+                            0.5, self.COLOR_TEXT_GOLD, 1, cv2.LINE_AA)
 
         return frame
 
