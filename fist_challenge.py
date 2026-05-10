@@ -39,7 +39,7 @@ class FistChallenge:
         self.action: str = ""
         self.start_time: float = 0.0
         self.hit_count: int = 0
-        self.total_squares: int = 3
+        self.total_squares: int = 4
         self._challenge_completed: bool = False
         self._result_accuracy: float = 0.0
         self.result_extra_text: str = ""  # Hasar bilgisi icin

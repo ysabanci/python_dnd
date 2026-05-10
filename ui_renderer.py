@@ -191,8 +191,9 @@ class GameUI:
                      hover_quadrant: Optional[str] = None,
                      progress: float = 0.0,
                      mode: str = "kesif",
-                     dice_option_key: str = "") -> np.ndarray:
-        """4 buton cizer. Savas modunda renkli butonlar. Zar gerektiren butona ikon koyar."""
+                     dice_option_key: str = "",
+                     advantage_key: str = "") -> np.ndarray:
+        """4 buton cizer. Savas modunda renkli butonlar. Avantaj ve zar badge'leri gosterir."""
 
         # Savas modunda buton renkleri (BGR)
         COMBAT_COLORS = {
@@ -283,6 +284,18 @@ class GameUI:
                 zy = y1 + zh + 6
                 cv2.putText(frame, zar_text, (zx, zy), self.FONT,
                             0.5, self.COLOR_TEXT_GOLD, 1, cv2.LINE_AA)
+
+            # Avantaj badge (sinif avantajli butonda)
+            if advantage_key == qid and mode == "savas":
+                adv_text = "Avantaj"
+                (aw, ah), _ = cv2.getTextSize(adv_text, self.FONT, 0.5, 1)
+                ax = x2 - aw - 8
+                ay = y1 + ah + 6
+                # Zar badge varsa alta kaydir
+                if dice_option_key == qid:
+                    ay += 18
+                cv2.putText(frame, adv_text, (ax, ay), self.FONT,
+                            0.5, (50, 255, 200), 1, cv2.LINE_AA)
 
         return frame
 

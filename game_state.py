@@ -117,6 +117,14 @@ class GameState:
         "Hirsiz":  {"attack_mult": 1.0,  "magic_mult": 1.0,  "flee_threshold": 40, "defense_reduction": 0.0},
     }
 
+    # Sinif -> avantajli savas butonu (Okcu pasif bonus, buton yok)
+    CLASS_ADVANTAGE_KEY = {
+        "Savasci": "sol_ust",   # Saldir
+        "Buyucu":  "sag_alt",   # Buyu
+        "Hirsiz":  "sol_alt",   # Kac
+        "Okcu":    "",           # Pasif - buton yok
+    }
+
     POSSIBLE_LOCATIONS = [
         "Karanlik Magara", "Gizemli Orman", "Kaotik Uzay", "Ruhlar Cehennemi",
         "Sonsuz Col", "Batan Sehir", "Ejderha Yuvasi", "Buzul Sarayi",
@@ -467,6 +475,10 @@ class GameState:
             self.character.char_class,
             {"attack_mult": 1.0, "magic_mult": 1.0, "flee_threshold": 70, "defense_reduction": 0.0}
         )
+
+    def get_advantage_key(self) -> str:
+        """Sinifin avantajli oldugu savas buton key'ini dondurur. Bos = yok."""
+        return self.CLASS_ADVANTAGE_KEY.get(self.character.char_class, "")
 
     # Silah olmayan esyalar (bu listedekiler silah seciminde gosterilmez)
     NON_WEAPON_ITEMS = {"Mesale", "Harita", "Iksir", "Anahtar", "Pusula",

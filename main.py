@@ -249,7 +249,8 @@ class DnDGame:
                                          self.state.enemy_hp, self.state.enemy_max_hp)
                 frame = self.ui.draw_buttons(frame, self.state.current_options,
                                              hover_quadrant, progress, self.state.current_mode,
-                                             self.state.dice_option_key if self.state.dice_required else "")
+                                             self.state.dice_option_key if self.state.dice_required else "",
+                                             self.state.get_advantage_key())
 
                 if finger_pos:
                     frame = self.ui.draw_finger_cursor(frame, finger_pos)
@@ -358,18 +359,25 @@ class DnDGame:
             self._weapon_select_options = weapons
             self._weapon_combat_action = choice_text
 
-            # Silah seceneklerini butonlara ata
-            option_keys = ["sol_ust", "sag_ust", "sol_alt", "sag_alt"]
-            self.state.current_options = {}
-            for i, key in enumerate(option_keys):
-                if i < len(weapons):
-                    self.state.current_options[key] = weapons[i]
-                else:
-                    self.state.current_options[key] = ""
-            self.state.active_option_count = min(len(weapons), 4)
-            self.state.current_story = f"{choice_text} icin silahini sec!"
-            self.current_phase = self.PHASE_WEAPON_SELECT
-            print(f"[>] Silah secim fazi basladi: {weapons}")
+            if len(weapons) <= 1:
+                # Tek silah varsa direkt challenge (secim ekrani atla)
+                self._selected_weapon = weapons[0] if weapons else "Yumruk"
+                self.state.equipped_weapon = self._selected_weapon
+                print(f"[>] Tek silah, otomatik secildi: {self._selected_weapon}")
+                self._start_actual_challenge(choice_text)
+            else:
+                # Birden fazla silah: secim ekrani goster
+                option_keys = ["sol_ust", "sag_ust", "sol_alt", "sag_alt"]
+                self.state.current_options = {}
+                for i, key in enumerate(option_keys):
+                    if i < len(weapons):
+                        self.state.current_options[key] = weapons[i]
+                    else:
+                        self.state.current_options[key] = ""
+                self.state.active_option_count = min(len(weapons), 4)
+                self.state.current_story = f"{choice_text} icin silahini sec!"
+                self.current_phase = self.PHASE_WEAPON_SELECT
+                print(f"[>] Silah secim fazi basladi: {weapons}")
         else:
             # Savunma/Kacis: direkt challenge
             self._start_actual_challenge(choice_text)
