@@ -207,6 +207,20 @@ class GameState:
         # ----- Bekleyen Ganimet (otomatik eklenmez, oyuncu secmeli) -----
         self.pending_loot: str = ""  # AI'dan gelen ama henuz alinmamis esya
 
+        # ----- Dunya Takibi (World State) -----
+        self.visited_locations: List[str] = []  # Gezilen alt bolgeler (AI'dan gelir)
+        self.location_history: List[str] = []   # Tur bazli konum gecmisi (geri don icin)
+        self.npc_met: List[str] = []             # Konusulan NPC'ler
+        self.interactions: List[str] = []        # Onemli etkilesimler (max 20)
+        self.current_sub_location: str = ""      # Alt bolge (AI'dan gelir)
+        self._can_go_back: bool = False           # Geri donulebilir mi
+
+        # ----- Rastgele Savas Zamanlayici -----
+        import random
+        self._next_combat_turn: int = random.randint(5, 10)  # Ilk savas 5-10. turda
+        self._last_combat_turn: int = 0
+        self._in_combat: bool = False
+
         # ----- AI Mesaj Geçmişi (Memory) -----
         self._message_history: List[Dict[str, str]] = []
         self._init_system_prompt()
@@ -351,6 +365,47 @@ class GameState:
         # Yedek: hikaye metni icindeki tag'lerden de oku
         self._parse_hp_changes(ai_response)
 
+        # ----- Dunya Takibi (World State) -----
+        # Alt bolge
+        sub_loc = ai_response.get("alt_bolge", "")
+        if sub_loc and isinstance(sub_loc, str) and sub_loc.strip():
+            sub_loc = sub_loc.strip()
+            # Konum gecmisine ekle (geri don icin)
+            if self.current_sub_location and self.current_sub_location != sub_loc:
+                self.location_history.append(self.current_sub_location)
+                # Max 10 konum gecmisi tut
+                if len(self.location_history) > 10:
+                    self.location_history = self.location_history[-10:]
+            self.current_sub_location = sub_loc
+            if sub_loc not in self.visited_locations:
+                self.visited_locations.append(sub_loc)
+                # Max 30 konum tut
+                if len(self.visited_locations) > 30:
+                    self.visited_locations = self.visited_locations[-30:]
+
+        # NPC tespiti
+        npc = ai_response.get("npc_adi", "")
+        if npc and isinstance(npc, str) and npc.strip():
+            npc = npc.strip()
+            if npc not in self.npc_met:
+                self.npc_met.append(npc)
+                if len(self.npc_met) > 20:
+                    self.npc_met = self.npc_met[-20:]
+
+        # Onemli etkilesim
+        interaction = ai_response.get("etkilesim", "")
+        if interaction and isinstance(interaction, str) and interaction.strip():
+            self.interactions.append(interaction.strip())
+            if len(self.interactions) > 20:
+                self.interactions = self.interactions[-20:]
+
+        # Geri donulebilirlik
+        self._can_go_back = bool(ai_response.get("geri_donulebilir", False))
+
+        # Savas durumu takibi
+        if self.current_mode != "savas" and self._in_combat:
+            self._in_combat = False
+
         # Oyun bitti mi kontrol et
         if self.character.hp <= 0:
             self.is_game_over = True
@@ -413,20 +468,29 @@ class GameState:
                 prompt += "DUSMAN YENILDI! Savasi bitir, mod='kesif' yap, odul ver. "
             self.pending_combat_result = None
         else:
-            cycle = self.turn_count % 8
-            if cycle < 4:
-                prompt += "Kesfe devam. Gidisat bir onceki adimla baglantili olsun, yeni ve temaya uygun bir yere ilerleyelim. "
-            elif cycle == 4:
-                prompt += "KARSIMA TEMA ILE UYUMLU BIR BOSS CIKAR! Boss savasi basliyor. mod'u 'savas' yap. "
-            elif cycle in [5, 6]:
-                prompt += "Boss savasi devam ediyor. Temaya uygun tehlikeli saldirilar yap. mod'u 'savas' yap. "
-            elif cycle == 7:
-                prompt += "Boss'u yeniyoruz veya kaciyoruz! Savasi sonlandir ve odul ver. mod'u 'kesif' yap. "
+            # Rastgele savas zamanlama
+            if self.current_mode == "savas" or self._in_combat:
+                # Savas devam ediyor
+                turns_in_combat = self.turn_count - self._last_combat_turn
+                if turns_in_combat >= 3:
+                    prompt += "Boss'u yeniyoruz veya kaciyoruz! Savasi sonlandir ve odul ver. mod'u 'kesif' yap. "
+                else:
+                    prompt += "Boss savasi devam ediyor. Temaya uygun tehlikeli saldirilar yap. mod='savas'. "
+            elif self.turn_count >= self._next_combat_turn:
+                import random
+                prompt += "KARSIMA TEMA ILE UYUMLU BIR DUSMAN CIKAR! Savas basliyor. mod'u 'savas' yap. "
+                self._in_combat = True
+                self._last_combat_turn = self.turn_count
+                self._next_combat_turn = self.turn_count + random.randint(6, 14)
+            else:
+                prompt += "Kesfe devam. Gidisat bir onceki adimla baglantili olsun. Temaya uygun yeni bir yere ilerleyelim. "
             
         # Bekleyen ganimet bilgisi
         if self.pending_loot:
             prompt += f"\nBEKLEYEN GANIMET: '{self.pending_loot}' - Oyuncuya bunu alip almayacagini sor. Seceneklerde 'Ganimeti al' ve 'Birak' gibi secenekler sun. yeni_esya BOSBIRAK cunku zaten beklemede."
 
+        # Dunya durumu
+        prompt += "\n" + self._get_world_context()
         prompt += "\n" + self.get_character_summary()
         return prompt
 
@@ -460,18 +524,19 @@ class GameState:
         Returns:
             Karakter durum özeti.
         """
-        inv_str = ", ".join(self.character.inventory) if self.character.inventory else "Boş"
+        inv_str = ", ".join(self.character.inventory) if self.character.inventory else "Bos"
         total = self.get_total_stats()
         stat_str = ", ".join(f"{k}:{v}" for k, v in total.items())
         return (
             f"[Karakter Durumu] "
             f"Ad: {self.character.name} | "
-            f"Sınıf: {self.character.char_class} | "
+            f"Sinif: {self.character.char_class} | "
             f"HP: {self.character.hp}/{self.character.max_hp} | "
-            f"Altın: {self.character.gold} | "
+            f"Altin: {self.character.gold} | "
             f"Stats: {stat_str} | "
             f"Envanter: {inv_str} | "
-            f"Konum: {self.current_location} | "
+            f"Ana Bolge: {self.current_location} | "
+            f"Alt Bolge: {self.current_sub_location} | "
             f"Tur: {self.turn_count}"
         )
 
@@ -785,6 +850,7 @@ class GameState:
             '"zar_gerekli": false, "zar_secenegi": "", '
             '"yeni_esya": "", '
             '"stat_degisim": {}, '
+            '"alt_bolge": "", "npc_adi": "", "etkilesim": "", "geri_donulebilir": false, '
             '"secenekler": {"sol_ust": "Ilerle", "sag_ust": "Etrafina bak", "sol_alt": "Geri don", "sag_alt": "Bekle"}}\n'
             "4. Hikaye 3-4 cumleyi, secenekler 5-6 kelimeyi gecmesin.\n"
             "5. MOD ALANI (ZORUNLU):\n"
@@ -831,13 +897,44 @@ class GameState:
             "   - Ornek: {\"STR\": 2, \"DEF\": -1} -> +2 guc, -1 savunma.\n"
             "   - Ozel olaylarda stat ver: Antrenman -> STR+1/2, Buyu ogrenme -> INT+1/2, Tuzak atlama -> DEX+1, Lanetlenme -> herhangi stat -1/-2.\n"
             "   - Savas kazanildiktan sonra bazen stat ver. Her turda verme, sadece onemli olaylarda.\n"
-            "   - Stat degisimleri kucuk olsun: -2 ile +3 arasi. Abartma."
+            "   - Stat degisimleri kucuk olsun: -2 ile +3 arasi. Abartma.\n"
+            "16. DUNYA TAKIBI (COK ONEMLI - Tutarlilik):\n"
+            "   - alt_bolge: Oyuncunun su an bulundugu alt bolge/mekan adi. Her turda doldur. Ornek: 'Batik Gemi Enkazlari', 'Kasaba Meydani'.\n"
+            "   - npc_adi: Bu turda konusulan veya karsilasilan NPC varsa adi. Yoksa bos birak.\n"
+            "   - etkilesim: Bu turda onemli bir etkilesim olduysa kisa aciklama. Ornek: 'Sandigi acti', 'Kopruyu gecti'. Yoksa bos birak.\n"
+            "   - Sana verilen [Gezilen Bolgeler], [Taninan NPC'ler] ve [Son Etkilesimler] bilgisine SADIK KAL.\n"
+            "   - Daha once gezilen bir bolgeye donuldugunde orayi HATIRLA ve tutarli betimle.\n"
+            "   - NPC isimleri TUTARLI olsun. Ayni NPC'yi farkli isimle cagirma.\n"
+            "   - Hikayede onceki olaylara referans ver. Oyuncunun gectigi yerleri, kararlarini hatirlat.\n"
+            "17. GERI DON MEKANIĞI:\n"
+            "   - geri_donulebilir: Oyuncunun bir onceki bolgeye geri donup donemeyecegi (true/false).\n"
+            "   - Geri don UYGUN durumlar: yol kavsaklari, acik alanlar, kasaba sokaklari, koridorlar.\n"
+            "   - Geri don UYGUN OLMAYAN durumlar: savas sirasinda, tek yonlu dusus, coken magara, kapanan kapi.\n"
+            "   - geri_donulebilir=true ise seceneklerden birinde 'Geri don' secenegi sun (tercihen sag_alt).\n"
+            "   - Geri don secilirse oyuncuyu bir onceki alt bolgeye gotur ve oradaki sahneyi HATIRLA.\n"
+            "   - Savas modunda geri_donulebilir DAIMA false olsun."
         )
 
         self._message_history.append({
             "role": "system",
             "content": system_prompt,
         })
+
+    def _get_world_context(self) -> str:
+        """AI'a gonderilecek dunya durumu ozet metni."""
+        parts = []
+        if self.visited_locations:
+            recent = self.visited_locations[-8:]  # Son 8 konum
+            parts.append(f"[Gezilen Bolgeler] {', '.join(recent)}")
+        if self.npc_met:
+            parts.append(f"[Taninan NPC'ler] {', '.join(self.npc_met[-6:])}")
+        if self.interactions:
+            parts.append(f"[Son Etkilesimler] {' | '.join(self.interactions[-5:])}")
+        if self.location_history:
+            parts.append(f"[Geri Donulebilir Konum] {self.location_history[-1]}")
+        if self._can_go_back and self.location_history:
+            parts.append("Geri don secenegi sunulabilir.")
+        return "\n".join(parts) if parts else ""
 
     def _optimize_memory(self) -> None:
         """

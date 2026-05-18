@@ -4,3 +4,5 @@ __pycache__/
 .DS_Store
 .env
 hand_landmarker.task
+not.txt
+game_config.json
