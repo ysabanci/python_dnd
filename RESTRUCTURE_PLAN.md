@@ -960,12 +960,12 @@ Her adım bir commit olmalı ve arada oyun test edilmelidir.
 
 ### AŞAMA 0: Güvenlik Ağı (Hiçbir Kod Değişmez)
 
-- [ ] 0.1 — `tests/` dizini oluştur, `pytest` ekle (S16, S17) — Risk: Sıfır
-- [ ] 0.2 — `test_game_state.py` — saf fonksiyonlar için unit testler yaz (S16) — Risk: Sıfır
-- [ ] 0.3 — `test_ai_parse.py` — `_parse_response` testleri (S16) — Risk: Sıfır
-- [ ] 0.4 — `test_config.py` — config fonksiyonları testleri (S16) — Risk: Sıfır
-- [ ] 0.5 — `test_snapshots.py` — characterization (snapshot) testleri yaz (S16) — Risk: Sıfır
-- [ ] 0.6 — `requirements.txt` pinleme (S18) — Risk: Çok düşük
+- [x] 0.1 — `tests/` dizini oluştur, `pytest` ekle (S16, S17) — Risk: Sıfır
+- [x] 0.2 — `test_game_state.py` — saf fonksiyonlar için unit testler yaz (S16) — Risk: Sıfır
+- [x] 0.3 — `test_ai_parse.py` — `_parse_response` testleri (S16) — Risk: Sıfır
+- [x] 0.4 — `test_config.py` — config fonksiyonları testleri (S16) — Risk: Sıfır
+- [x] 0.5 — `test_snapshots.py` — characterization (snapshot) testleri yaz (S16) — Risk: Sıfır
+- [x] 0.6 — `requirements.txt` pinleme (S18) — Risk: Çok düşük
 
 **Adım 0.5 Detayı:** Snapshot testleri God Object'lerdeki karmaşık
 metodların davranışını dondurur. Bilinen bir `GameState` oluşturulur

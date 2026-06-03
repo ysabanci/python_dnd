@@ -8,3 +8,4 @@ game_config.json
 venv
 .idea
 .venv
+.pytest_cache
