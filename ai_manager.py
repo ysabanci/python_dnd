@@ -194,7 +194,6 @@ class AdventureAI:
     def _parse_response(self, raw_content: str) -> Dict[str, Any]:
         """AI yanitini JSON olarak ayristirir."""
         import re
-        import ast
         content = raw_content.strip()
 
         fallback = {
@@ -209,23 +208,29 @@ class AdventureAI:
         }
 
         try:
+            # 1. Dogrudan JSON olarak parse etmeyi dene
+            try:
+                data = json.loads(content)
+                if "hikaye_metni" in data and "secenekler" in data:
+                    return data
+            except json.JSONDecodeError:
+                pass
+
+            # 2. Basarisiz olursa, regex ile JSON blogunu bul ve parse et
             json_match = re.search(r'(\{.*\})', content, re.DOTALL)
             if json_match:
                 json_str = json_match.group(1)
                 try:
                     data = json.loads(json_str)
+                    if "hikaye_metni" in data and "secenekler" in data:
+                        return data
                 except json.JSONDecodeError:
-                    data = ast.literal_eval(json_str)
+                    pass
 
-                if "hikaye_metni" in data and "secenekler" in data:
-                    return data
+            # 3. Hicbiri calismazsa veya gerekli anahtarlar yoksa fallback don
+            print(f"\n[!] AI Yaniti Gecersiz Format (Fallback devrede):\n{raw_content}\n")
+            return fallback
 
-            try:
-                data = json.loads(content)
-            except json.JSONDecodeError:
-                data = ast.literal_eval(content)
-
-            return data
         except Exception as e:
             print(f"\n[!] Ayristirma Hatasi: {e}\n[!] AI Yaniti: {raw_content}\n")
             return fallback

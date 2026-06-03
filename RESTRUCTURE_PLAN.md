@@ -85,7 +85,7 @@ Her sorun şu formatta belgelenmiştir:
 
 ### SESSIZ BUGLAR (Kodda Gizli Hatalar)
 
-#### - [ ] S01: `draw_buttons`'a Yanlış Parametre Tipi Gönderiliyor
+#### - [x] S01: `draw_buttons`'a Yanlış Parametre Tipi Gönderiliyor
 
 - **Konum:** `main.py` satır 920-922
 - **Şu An Ne Oluyor:** Silah seçim fazında `draw_buttons` çağrılırken
@@ -162,7 +162,7 @@ Her sorun şu formatta belgelenmiştir:
 
 ---
 
-#### - [ ] S04: `_extra_turn_active` Bayrağı Sıfırlanmıyor
+#### - [x] S04: `_extra_turn_active` Bayrağı Sıfırlanmıyor
 
 - **Konum:** `main.py` satır 110 (tanım), satır 530 (True yapılıyor),
   satır 1260 (sadece `_restart`'ta sıfırlanıyor)
@@ -341,7 +341,7 @@ Her sorun şu formatta belgelenmiştir:
 
 ---
 
-#### - [ ] S10: Hardcoded String Tekrarları
+#### - [x] S10: Hardcoded String Tekrarları
 
 - **Konum:** `main.py` satır 394, 479, 480, 481, 560, 561, 846-848
 - **Şu An Ne Oluyor:** Savaş aksiyonları (`"saldir"`, `"savun"`,
@@ -359,7 +359,7 @@ Her sorun şu formatta belgelenmiştir:
 
 ---
 
-#### - [ ] S11: Envanter Yönetiminde `getattr` Hack'i
+#### - [x] S11: Envanter Yönetiminde `getattr` Hack'i
 
 - **Konum:** `main.py` satır 1025-1028
 - **Şu An Ne Oluyor:**
@@ -430,7 +430,7 @@ Her sorun şu formatta belgelenmiştir:
 
 ---
 
-#### - [ ] S14: `ast.literal_eval` ile Dış Veri Parse'ı
+#### - [x] S14: `ast.literal_eval` ile Dış Veri Parse'ı
 
 - **Konum:** `ai_manager.py` satır 218, 226
 - **Şu An Ne Oluyor:** AI yanıtı `json.loads` ile parse edilemezse
@@ -977,11 +977,11 @@ Oyun normal çalışır.
 
 ### AŞAMA 1: Bağımsız Küçük Düzeltmeler (Minimal Risk)
 
-- [ ] 1.1 — `main.py:920-922` — `draw_buttons` parametre düzeltmesi (S01) — Risk: Çok düşük
-- [ ] 1.2 — `main.py:__init__` — `_inv_hovered_*` attribute tanımları ekle (S11) — Risk: Çok düşük
-- [ ] 1.3 — `main.py` — `_extra_turn_active` sıfırlama noktaları ekle (S04) — Risk: Çok düşük
-- [ ] 1.4 — `main.py` — Savaş aksiyon string sabitleri tanımla (S10) — Risk: Çok düşük
-- [ ] 1.5 — `ai_manager.py` — `ast.literal_eval` kaldır (S14) — Risk: Düşük
+- [x] 1.1 — `main.py:920-922` — `draw_buttons` parametre düzeltmesi (S01) — Risk: Çok düşük
+- [x] 1.2 — `main.py:__init__` — `_inv_hovered_*` attribute tanımları ekle (S11) — Risk: Çok düşük
+- [x] 1.3 — `main.py` — `_extra_turn_active` sıfırlama noktaları ekle (S04) — Risk: Çok düşük
+- [x] 1.4 — `main.py` — Savaş aksiyon string sabitleri tanımla (S10) — Risk: Çok düşük
+- [x] 1.5 — `ai_manager.py` — `ast.literal_eval` kaldır (S14) — Risk: Düşük
 
 **DOĞRULAMA:** Her adımdan sonra:
 1. `pytest tests/` — testler hala geçiyor mu?

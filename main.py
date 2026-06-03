@@ -53,6 +53,12 @@ class DnDGame:
     # Basarili saldiri sonrasi ekstra tur sansi (%30)
     EXTRA_TURN_CHANCE = 0.30
 
+    # Savas aksiyon sabitleri
+    ACTION_ATTACK = ("saldir", "saldiri", "buyu")
+    ACTION_DEFENSE = ("savun", "savunma")
+    ACTION_FLEE = ("kac", "kacis")
+    ACTION_MAGIC = "buyu"
+
     def __init__(self, config: dict = None):
         self._config = config or load_config()
 
@@ -120,6 +126,10 @@ class DnDGame:
         self._inventory_page: int = 0
         self._inv_hovered_idx: int = -1
         self._inv_hovered_devam: bool = False
+        self._inv_hovered_shop: int = -1
+        self._inv_hovered_roll: bool = False
+        self._inv_hovered_prev: bool = False
+        self._inv_hovered_next: bool = False
         self._inv_dwell_start: float = 0.0
         self._inv_dwell_target: str = ""  # "item:X" veya "devam" veya "prev"/"next"
 
@@ -391,7 +401,7 @@ class DnDGame:
         self.tracker.reset_selection()
 
         action_lower = choice_text.lower()
-        is_attack = action_lower in ("saldir", "saldiri", "buyu")
+        is_attack = action_lower in self.ACTION_ATTACK
 
         if is_attack:
             # Saldiri/Buyu: once silah sec, sonra challenge
@@ -476,9 +486,9 @@ class DnDGame:
               <%70 = basarisiz, hasar alir
         """
         action_lower = action.lower()
-        is_attack = action_lower in ("saldir", "saldiri", "buyu")
-        is_defense = action_lower in ("savun", "savunma")
-        is_flee = action_lower in ("kac", "kacis")
+        is_attack = action_lower in self.ACTION_ATTACK
+        is_defense = action_lower in self.ACTION_DEFENSE
+        is_flee = action_lower in self.ACTION_FLEE
 
         grant_extra_turn = False
 
@@ -558,7 +568,7 @@ class DnDGame:
         is_unarmed = self._selected_weapon in ("Yumruk", "")
 
         action_lower = action.lower()
-        if action_lower == "buyu" or weapon_type == "buyusel":
+        if action_lower == self.ACTION_MAGIC or weapon_type == "buyusel":
             class_mult = class_bonus.get("magic_mult", 1.0)
             stat_bonus = stat_fx.get("magic_bonus", 0)
         else:
@@ -843,9 +853,9 @@ class DnDGame:
     def _get_combat_preview(self, accuracy: float, action: str) -> str:
         """Challenge sonucuna gore hasar on izleme metni olusturur."""
         action_lower = action.lower()
-        is_attack = action_lower in ("saldir", "saldiri", "buyu")
-        is_defense = action_lower in ("savun", "savunma")
-        is_flee = action_lower in ("kac", "kacis")
+        is_attack = action_lower in self.ACTION_ATTACK
+        is_defense = action_lower in self.ACTION_DEFENSE
+        is_flee = action_lower in self.ACTION_FLEE
 
         if is_attack:
             if accuracy >= 85:
@@ -919,7 +929,7 @@ class DnDGame:
                                          self.state.current_mode)
         frame = self.ui.draw_buttons(frame, self.state.current_options,
                                       hover_quadrant, progress,
-                                      self.state.active_option_count)
+                                      mode=self.state.current_mode)
         if finger_pos:
             frame = self.ui.draw_finger_cursor(frame, finger_pos)
         frame = self.tracker.draw_hand_landmarks(frame)
@@ -1022,10 +1032,10 @@ class DnDGame:
             shop_items=shop_items,
             shop_roll_cost=shop_roll_cost,
             gold=gold,
-            hovered_shop=getattr(self, '_inv_hovered_shop', -1),
-            hovered_roll=getattr(self, '_inv_hovered_roll', False),
-            hovered_prev=getattr(self, '_inv_hovered_prev', False),
-            hovered_next=getattr(self, '_inv_hovered_next', False)
+            hovered_shop=self._inv_hovered_shop,
+            hovered_roll=self._inv_hovered_roll,
+            hovered_prev=self._inv_hovered_prev,
+            hovered_next=self._inv_hovered_next
         )
 
         if finger_pos:
@@ -1181,6 +1191,7 @@ class DnDGame:
     def _send_combat_result(self, accuracy: float, action: str) -> None:
         """Savas sonucunu AI'a gonderir."""
         self.current_phase = self.PHASE_NORMAL
+        self._extra_turn_active = False
 
         # Sonucu state'e kaydet
         self.state.pending_combat_result = {
