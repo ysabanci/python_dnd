@@ -3,6 +3,8 @@ __pycache__/
 *$py.class
 .DS_Store
 .env
-hand_landmarker.task
 not.txt
 game_config.json
+venv
+.idea
+.venv
