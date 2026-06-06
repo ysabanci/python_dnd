@@ -9,6 +9,9 @@ Geçmiş çok uzarsa eski mesajları kırpan optimizasyon içerir.
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
 
+import game_data
+from shop_system import ShopSystem
+
 
 @dataclass
 class Character:
@@ -64,99 +67,16 @@ class GameState:
     # Kırpma sonrası bırakılacak mesaj sayısı (sistem mesajı hariç)
     TRIM_TO_MESSAGES = 12
 
-    THEME_LORE = {
-        "Karanlik Magara": "Kadim bir ejderhanin yillardir uyudugu, duvarlarindan kristal suzulen rutubetli ve devasa bir magara sistemi.",
-        "Gizemli Orman": "Agaclarin fisildadigi, her adimda bitkilerin yer degistirdigi ve sislerin arasinda perilerin goruldugu buyulu bir orman.",
-        "Kaotik Uzay": "Fizik kurallarinin islemedigi, yildiz tozlarinin arasinda devasa gozlerin sizi izledigi boyutsal bir bosluk.",
-        "Ruhlar Cehennemi": "Lav nehirlerinin aktigi, gunahkar ruhlarin cigliklarinin yankilandigi ve zebani lordlarinin hukmettigi bir diyar.",
-        "Sonsuz Col": "Gunesin hic batmadigi, kumlarin altinda devasa solucanlarin dolastigi ve seraplarin insanlari delirttigi bir sahra.",
-        "Batan Sehir": "Denizin altina gomulmus, su altinda nefes alinabilen ama yaratiklarin pusuya yattigi antik bir sehir.",
-        "Ejderha Yuvasi": "Volkanik bir dagin icinde, altin yiginlarinin arasinda uyuyan ejderhalarin korundugu efsanevi yuva.",
-        "Buzul Sarayi": "Her seyin buzdan yapildigi, buz devilerin hukmettigi dondurucu bir saray.",
-        "Hayalet Kasabasi": "Yasayan kimsenin kalmadigi, geceleyin hayaletlerin sokaklarda dolastigi terk edilmis bir kasaba.",
-        "Lanetli Kale": "Karanlik buyulerle korunan, icinde vampir lordun hukum surdugu gotik bir kale.",
-    }
-
-    CLASS_DATA = {
-        "Savasci": {"hp": 120, "max_hp": 120, "gold": 30},
-        "Buyucu": {"hp": 80, "max_hp": 80, "gold": 60},
-        "Okcu": {"hp": 100, "max_hp": 100, "gold": 40},
-        "Hirsiz": {"hp": 90, "max_hp": 90, "gold": 80},
-    }
-
-    # Sinif bazli temel istatistikler
-    CLASS_BASE_STATS = {
-        "Savasci": {"STR": 16, "DEX": 10, "INT": 8,  "DEF": 14, "LUCK": 8},
-        "Buyucu":  {"STR": 6,  "DEX": 10, "INT": 18, "DEF": 8,  "LUCK": 10},
-        "Okcu":    {"STR": 10, "DEX": 16, "INT": 10, "DEF": 10, "LUCK": 12},
-        "Hirsiz":  {"STR": 8,  "DEX": 14, "INT": 10, "DEF": 8,  "LUCK": 18},
-    }
-
-    WEAPON_DATA = {
-        "Savasci": ["Celik Kilic", "Savas Baltasi", "Mizrak", "Cift El Kilici"],
-        "Buyucu": ["Ates Asasi", "Buz Asasi", "Yildirim Degnek", "Karanlik Grimoire"],
-        "Okcu": ["Uzun Yay", "Arbalete", "Cift Kisa Yay", "Zehirli Ok Seti"],
-        "Hirsiz": ["Gizli Hancer", "Zehirli Bicak", "Garoz Seti", "Duman Bombalari"],
-    }
-
-    # Silah istatistikleri: hasar bonusu, tipi, ve stat bonuslari
-    WEAPON_STATS = {
-        # Savasci silahlari
-        "Celik Kilic":       {"bonus": 5,  "type": "fiziksel", "stats": {"STR": 3, "DEF": 1}},
-        "Savas Baltasi":     {"bonus": 8,  "type": "fiziksel", "stats": {"STR": 5, "DEX": -1}},
-        "Mizrak":            {"bonus": 4,  "type": "fiziksel", "stats": {"STR": 2, "DEX": 2}},
-        "Cift El Kilici":    {"bonus": 10, "type": "fiziksel", "stats": {"STR": 6, "DEF": -2}},
-        # Buyucu silahlari
-        "Ates Asasi":        {"bonus": 7,  "type": "buyusel",  "stats": {"INT": 4, "STR": -1}},
-        "Buz Asasi":         {"bonus": 6,  "type": "buyusel",  "stats": {"INT": 3, "DEF": 2}},
-        "Yildirim Degnek":   {"bonus": 9,  "type": "buyusel",  "stats": {"INT": 5, "LUCK": 1}},
-        "Karanlik Grimoire": {"bonus": 12, "type": "buyusel",  "stats": {"INT": 7, "LUCK": -2}},
-        # Okcu silahlari
-        "Uzun Yay":          {"bonus": 6,  "type": "fiziksel", "stats": {"DEX": 4, "STR": 1}},
-        "Arbalete":          {"bonus": 8,  "type": "fiziksel", "stats": {"DEX": 3, "STR": 3}},
-        "Cift Kisa Yay":     {"bonus": 5,  "type": "fiziksel", "stats": {"DEX": 5, "DEF": -1}},
-        "Zehirli Ok Seti":   {"bonus": 7,  "type": "buyusel",  "stats": {"DEX": 2, "INT": 3}},
-        # Hirsiz silahlari
-        "Gizli Hancer":      {"bonus": 6,  "type": "fiziksel", "stats": {"DEX": 3, "LUCK": 2}},
-        "Zehirli Bicak":     {"bonus": 7,  "type": "buyusel",  "stats": {"DEX": 2, "INT": 2, "LUCK": 1}},
-        "Garoz Seti":        {"bonus": 4,  "type": "fiziksel", "stats": {"DEX": 4, "LUCK": 3}},
-        "Duman Bombalari":   {"bonus": 5,  "type": "buyusel",  "stats": {"DEX": 1, "LUCK": 4}},
-        # Varsayilan
-        "Pasli Kilic":       {"bonus": 2,  "type": "fiziksel", "stats": {"STR": 1}},
-        "Mesale":            {"bonus": 1,  "type": "fiziksel", "stats": {}},
-        "Yumruk":            {"bonus": 0,  "type": "fiziksel", "stats": {}},
-    }
-
-    # Stat isimleri (gosterim icin)
-    STAT_NAMES = {
-        "STR": "Guc",
-        "DEX": "Cevik",
-        "INT": "Zeka",
-        "DEF": "Savun",
-        "LUCK": "Sans",
-    }
-
-    # Sinif bonuslari
-    CLASS_BONUS = {
-        "Savasci": {"attack_mult": 1.25, "magic_mult": 1.0,  "flee_threshold": 70, "defense_reduction": 0.0},
-        "Buyucu":  {"attack_mult": 1.0,  "magic_mult": 1.30, "flee_threshold": 70, "defense_reduction": 0.0},
-        "Okcu":    {"attack_mult": 1.0,  "magic_mult": 1.0,  "flee_threshold": 70, "defense_reduction": 0.20},
-        "Hirsiz":  {"attack_mult": 1.0,  "magic_mult": 1.0,  "flee_threshold": 40, "defense_reduction": 0.0},
-    }
-
-    # Sinif -> avantajli savas butonu (Okcu pasif bonus, buton yok)
-    CLASS_ADVANTAGE_KEY = {
-        "Savasci": "sol_ust",   # Saldir
-        "Buyucu":  "sag_alt",   # Buyu
-        "Hirsiz":  "sol_alt",   # Kac
-        "Okcu":    "",           # Pasif - buton yok
-    }
-
-    POSSIBLE_LOCATIONS = [
-        "Karanlik Magara", "Gizemli Orman", "Kaotik Uzay", "Ruhlar Cehennemi",
-        "Sonsuz Col", "Batan Sehir", "Ejderha Yuvasi", "Buzul Sarayi",
-        "Hayalet Kasabasi", "Lanetli Kale",
-    ]
+    # ----- Statik veriler game_data.py'den import edilir -----
+    THEME_LORE = game_data.THEME_LORE
+    CLASS_DATA = game_data.CLASS_DATA
+    CLASS_BASE_STATS = game_data.CLASS_BASE_STATS
+    WEAPON_DATA = game_data.WEAPON_DATA
+    WEAPON_STATS = game_data.WEAPON_STATS
+    STAT_NAMES = game_data.STAT_NAMES
+    CLASS_BONUS = game_data.CLASS_BONUS
+    CLASS_ADVANTAGE_KEY = game_data.CLASS_ADVANTAGE_KEY
+    POSSIBLE_LOCATIONS = game_data.POSSIBLE_LOCATIONS
 
     def __init__(self, character: Optional[Character] = None):
         """
@@ -168,6 +88,9 @@ class GameState:
         self.character = character or Character()
         self.current_location: str = "Bilinmeyen Diyar"
         self.turn_count: int = 0
+
+        # ----- Shop Sistemi (delege) -----
+        self._shop = ShopSystem()
 
         # ----- Hikaye ve Seçenekler -----
         self.current_story: str = "Macera başlamak üzere..."
@@ -602,63 +525,39 @@ class GameState:
             "flee_bonus": min(25.0, max(0, (total.get("DEX", 10) - 10)) * 0.25),
         }
 
-    # ---- SHOP SISTEMI ----
-    SHOP_BASE_COST = 15  # Baslangic fiyati
-    SHOP_ROLL_BASE_COST = 10  # Roll butonu baslangic fiyati
+    # ---- SHOP SISTEMI (ShopSystem'e delege edilir) ----
+    SHOP_BASE_COST = game_data.SHOP_BASE_COST
+    SHOP_ROLL_BASE_COST = game_data.SHOP_ROLL_BASE_COST
 
     def init_shop(self) -> None:
         """Shop'u sifirlar (her savas sonrasi cagrilir)."""
-        import random
-        self._shop_roll_cost = self.SHOP_ROLL_BASE_COST
-        self._shop_items = self._generate_shop_items()
-
-    def _generate_shop_items(self) -> list:
-        """3 rastgele stat arttirma secenegi uretir."""
-        import random
-        stat_keys = ["STR", "DEX", "INT", "DEF", "LUCK"]
-        items = []
-        for _ in range(3):
-            sk = random.choice(stat_keys)
-            amount = random.randint(2, 6)
-            cost = self.SHOP_BASE_COST + amount * 3
-            items.append({"stat": sk, "amount": amount, "cost": cost})
-        return items
+        self._shop.init()
 
     def get_shop_items(self) -> list:
         """Mevcut shop seceneklerini dondurur."""
-        if not hasattr(self, '_shop_items'):
-            self.init_shop()
-        return self._shop_items
+        return self._shop.get_items()
 
     def get_shop_roll_cost(self) -> int:
         """Roll butonunun mevcut maliyetini dondurur."""
-        if not hasattr(self, '_shop_roll_cost'):
-            self._shop_roll_cost = self.SHOP_ROLL_BASE_COST
-        return self._shop_roll_cost
+        return self._shop.get_roll_cost()
 
     def shop_buy(self, index: int) -> bool:
         """Shop'tan stat satin alir. Basarili ise True."""
-        items = self.get_shop_items()
-        if index < 0 or index >= len(items):
-            return False
-        item = items[index]
-        if self.character.gold < item["cost"]:
-            return False
-        self.character.gold -= item["cost"]
-        self.apply_event_stat(item["stat"], item["amount"])
-        print(f"[SHOP] {item['stat']} +{item['amount']} satin alindi ({item['cost']} altin)")
-        return True
+        return self._shop.buy(
+            index=index,
+            gold=self.character.gold,
+            apply_stat_fn=self.apply_event_stat,
+            deduct_gold_fn=lambda cost: setattr(
+                self.character, 'gold', self.character.gold - cost),
+        )
 
     def shop_roll(self) -> bool:
         """Shop seceneklerini yeniler. Maliyet her seferinde 2x artar."""
-        cost = self.get_shop_roll_cost()
-        if self.character.gold < cost:
-            return False
-        self.character.gold -= cost
-        self._shop_roll_cost = cost * 2
-        self._shop_items = self._generate_shop_items()
-        print(f"[SHOP] Roll yapildi ({cost} altin). Yeni maliyet: {self._shop_roll_cost}")
-        return True
+        return self._shop.roll(
+            gold=self.character.gold,
+            deduct_gold_fn=lambda cost: setattr(
+                self.character, 'gold', self.character.gold - cost),
+        )
 
     def modify_hp(self, amount: int) -> None:
         """
@@ -736,8 +635,7 @@ class GameState:
         return self.CLASS_ADVANTAGE_KEY.get(self.character.char_class, "")
 
     # Silah olmayan esyalar (bu listedekiler silah seciminde gosterilmez)
-    NON_WEAPON_ITEMS = {"Mesale", "Harita", "Iksir", "Anahtar", "Pusula",
-                        "Ip", "Canta", "Kitap", "Mum"}
+    NON_WEAPON_ITEMS = game_data.NON_WEAPON_ITEMS
 
     def get_combat_weapons(self) -> list:
         """Equip edilmis savas silahlarini dondurur (max 4). Silah yoksa bos liste."""

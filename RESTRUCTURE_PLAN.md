@@ -989,10 +989,10 @@ Oyun normal çalışır.
 
 ### AŞAMA 2: Veri Ayrıştırma (Düşük Risk)
 
-- [ ] 2.1 — `game_data.py` oluştur, statik sözlükleri taşı (S08) — Risk: Düşük
-- [ ] 2.2 — `game_state.py`'de import'ları güncelle (S08) — Risk: Düşük
-- [ ] 2.3 — `shop_system.py` oluştur, shop metodlarını taşı (S08) — Risk: Düşük
-- [ ] 2.4 — `test_shop.py` yaz (S16) — Risk: Sıfır
+- [x] 2.1 — `game_data.py` oluştur, statik sözlükleri taşı (S08) — Risk: Düşük
+- [x] 2.2 — `game_state.py`'de import'ları güncelle (S08) — Risk: Düşük
+- [x] 2.3 — `shop_system.py` oluştur, shop metodlarını taşı (S08) — Risk: Düşük
+- [x] 2.4 — `test_shop.py` yaz (S16) — Risk: Sıfır
 
 **DOĞRULAMA:** Testler + savaş sonrası envanter+shop ekranı çalışıyor mu?
 
