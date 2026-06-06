@@ -47,7 +47,7 @@ Yeni bir aşama tamamlandığında aşağıdaki şablonu kullanın:
 ## [Aşama 0] — Güvenlik Ağı: Test Altyapısı + Bağımlılık Pinleme
 
 - **Tarih:** 2026-06-03
-- **Agent:** Antigravity (Gemini)
+- **Agent:** Antigravity (Opus 4.6)
 - **İlgili Sorunlar:** S16 (Sıfır Unit Test), S17 (CI/CD Pipeline Yok), S18 (requirements.txt Üst Sınır Yok)
 - **Plan Uyumu:** ✅ Plana tam uygun
 
@@ -231,7 +231,7 @@ $ python -m pytest tests/ -v
 ## [Aşama 2.1 + 2.2] — Statik Veri Ayrıştırma
 
 - **Tarih:** 2026-06-04
-- **Agent:** Antigravity (Gemini)
+- **Agent:** Antigravity (Opus 4.6)
 - **İlgili Sorunlar:** S08 (game_state.py God Object)
 - **Plan Uyumu:** ✅ Plana tam uygun. 2.1 ve 2.2 ayrılmaz çift olduğu için birlikte yapıldı.
 
@@ -298,7 +298,7 @@ $ python -m pytest tests/ -v
 ## [Aşama 2.3 + 2.4] — Shop Sistemi Ayrıştırma + Test
 
 - **Tarih:** 2026-06-04
-- **Agent:** Antigravity (Gemini)
+- **Agent:** Antigravity (Opus 4.6)
 - **İlgili Sorunlar:** S08 (game_state.py God Object), S16 (Sıfır Unit Test)
 - **Plan Uyumu:** ✅ Plana tam uygun
 
@@ -410,6 +410,189 @@ Test artışı: 68 → 85 (+17 yeni shop testi)
 
 ---
 
+## [Aşama 3.1 + 3.2] — Prompt Ayrıştırma
+
+- **Tarih:** 2026-06-06
+- **Agent:** Antigravity (Opus 4.6)
+- **İlgili Sorunlar:** S08 (game_state.py God Object)
+- **Plan Uyumu:** ✅ Plana tam uygun. 3.1 ve 3.2 birlikte yapıldı (ayrılmaz çift).
+
+### Ne Yapıldı
+
+`GameState`'teki 4 prompt metodu yeni `PromptBuilder` sınıfına taşındı.
+Tüm metodlar `@staticmethod` — `GameState` referansı ALMAZ.
+
+**Taşınan metodlar (4 adet):**
+
+| Eski Metod (GameState) | Yeni Metod (PromptBuilder) | Orijinal Satır |
+|---|---|---|
+| `_init_system_prompt()` | `build_system_prompt()` | 738-819 (~80 satır) |
+| `get_dynamic_prompt(choice_text)` | `build_dynamic_prompt(...)` | 347-418 (~70 satır) |
+| `_get_world_context()` | `build_world_context(...)` | 821-835 (~15 satır) |
+| `get_character_summary()` | `build_character_summary(...)` | 442-464 (~20 satır) |
+
+### Teknik Kararlar
+
+**1. En kritik risk: `get_dynamic_prompt` içindeki SIDE-EFFECT'ler.**
+
+Orijinal `get_dynamic_prompt` sadece prompt metni üretmiyordu — aynı zamanda
+state de değiştiriyordu:
+
+```python
+# Satır 392: pending_combat_result sıfırlama
+self.pending_combat_result = None
+# Satır 405-407: savaşa giriş state değişiklikleri
+self._in_combat = True
+self._last_combat_turn = self.turn_count
+self._next_combat_turn = self.turn_count + random.randint(6, 14)
+```
+
+Bu side-effect'leri prompt fonksiyonundan ayırmak **en riskli** kısımdı.
+
+**Çözüm: Tuple return pattern.**
+
+```python
+# prompt_builder.py — SAF fonksiyon
+def build_dynamic_prompt(...) -> tuple:
+    ...
+    return prompt, side_effects  # side_effects: dict
+
+# game_state.py — wrapper side-effect'leri uygular
+def get_dynamic_prompt(self, choice_text):
+    prompt, side_effects = PromptBuilder.build_dynamic_prompt(...)
+    if side_effects["clear_combat_result"]:
+        self.pending_combat_result = None
+    if side_effects["enter_combat"]:
+        self._in_combat = True
+    ...
+    return prompt
+```
+
+Bu yaklaşım sayesinde:
+- `PromptBuilder.build_dynamic_prompt()` saf fonksiyon — test edilebilir
+- State mutasyonları `GameState` wrapper'ında kalıyor
+- `main.py`'deki `self.state.get_dynamic_prompt(choice_text)` çağrıları DEĞİŞMEDİ
+
+**2. Parametre sayısı:**
+
+`build_dynamic_prompt` 15 parametre alıyor. Bu fazla görünebilir ama bilinçli
+bir tercih — alternative olan `GameState` referansı geçirmek tight coupling
+yaratırdı. Açık parametreler:
+- Fonksiyonun hangi veriye bağımlı olduğunu dokümante eder
+- Mock/test yazmayı trivial hale getirir
+- Circular import riskini sıfırlar
+
+**3. `build_system_prompt` parametresiz olması:**
+
+Plan `build_system_prompt(character_class, theme, ...)` öneriyordu ama mevcut
+implementasyonda sistem prompt'u sabit ve dinamik veri İÇERMİYOR. Gereksiz
+parametre eklemek yerine `build_system_prompt()` parametresiz bırakıldı.
+İleride parametrik hale getirmek trivial bir değişiklik.
+
+**4. Prompt metinlerine dokunulmadı:**
+
+Kullanıcının açık talebi: "Promptların yapısına şimdilik dokunmuyoruz."
+Prompt metinleri karakter karakter aynı kopyalandı. Sadece konum değişti.
+
+### Dosya Değişiklikleri
+
+| Dosya | Durum | Değişiklik |
+|-------|-------|-----------|
+| `prompt_builder.py` | [YENİ] | ~240 satır — PromptBuilder sınıfı (4 @staticmethod) |
+| `game_state.py` | [DEĞİŞTİ] | ~185 satır inline prompt → ~50 satır wrapper |
+
+### Dikkat Edilecekler
+
+- `main.py`'deki `self.state.get_dynamic_prompt()`, `self.state.get_character_summary()`,
+  `self.state.get_message_history()` çağrıları **HİÇ DEĞİŞMEDİ**.
+- `prompt_builder.py` hiçbir şekilde `game_state`'i import ETMEZ → circular import riski SIFIR.
+- `build_dynamic_prompt` `tuple` dönüyor (`prompt, side_effects`). Doğrudan çağrılırsa
+  side_effects dict'inin uygulanması gerekir.
+- `_optimize_memory` hala `GameState` içinde — bu metod mesaj geçmişi (state) yönetimi
+  yaptığı için taşınmadı.
+
+### Test Sonuçları
+
+```
+$ python -m pytest tests/ -v
+============================= 85 passed in 0.64s ==============================
+```
+
+Test sayısı değişmedi — Aşama 3.3 (çağrı noktalarını güncelle) ve 3.4 (test yaz) henüz yapılmadı.
+
+---
+
+## [Aşama 3.3 + 3.4] — Çağrı Noktaları Güncelleme + Prompt Testleri
+
+- **Tarih:** 2026-06-06
+- **Agent:** Antigravity (Opus 4.6)
+- **İlgili Sorunlar:** S08 (game_state.py God Object), S16 (Sıfır Unit Test)
+- **Plan Uyumu:** ✅ Plana tam uygun
+
+### Ne Yapıldı
+
+**3.3 — Çağrı noktaları güncelleme:**
+
+Bu adım 3.2 ile birlikte zaten tamamlanmıştı. `game_state.py`'deki 4 wrapper
+metod, verileri parametre olarak `PromptBuilder`'a geçiyor. `main.py`'deki
+çağrı noktaları (`self.state.get_dynamic_prompt()`,
+`self.state.get_character_summary()`) değişmedi — wrapper'lar geriye uyumlu.
+
+Doğrulama: `main.py`'de 8 prompt çağrısı var, hepsi `self.state.` üzerinden.
+
+**3.4 — test_prompts.py (55 test):**
+
+Tüm `PromptBuilder` static metodları saf fonksiyon olduğu için mock
+gerekmeden test edildi. Test sınıfları:
+
+| Test Sınıfı | Test Sayısı | Test Edilen Metod |
+|---|---|---|
+| `TestBuildSystemPrompt` | 10 | `build_system_prompt()` — içerik, format, idempotent |
+| `TestBuildCharacterSummary` | 5 | `build_character_summary()` — alanlar, boş envanter, format |
+| `TestBuildWorldContext` | 9 | `build_world_context()` — bölgeler, NPC, etkileşim, geri dön |
+| `TestDynamicPromptExploration` | 9 | `build_dynamic_prompt()` — keşif modu, hikaye, ganimet |
+| `TestDynamicPromptCombat` | 12 | `build_dynamic_prompt()` — saldırı/savunma/kaçış/büyü |
+| `TestDynamicPromptCombatTiming` | 4 | `build_dynamic_prompt()` — savaş zamanlama, trigger |
+| `TestDynamicPromptBoundaryValues` | 6 | `build_dynamic_prompt()` — accuracy eşikleri (70/40) |
+
+### Teknik Kararlar
+
+**Helper method pattern (`_base_params`, `_combat_params`):**
+
+`build_dynamic_prompt` 15 parametre aldığı için her testte hepsini yazmak
+okunaklılığı bozardı. Her test sınıfına bir `_base_params(**overrides)` helper
+eklendi — sadece test edilen parametreyi override ediyorsun:
+
+```python
+def test_pending_loot_included(self):
+    prompt, _ = PromptBuilder.build_dynamic_prompt(
+        **self._base_params(pending_loot="Ates Kilici"))
+    assert "BEKLEYEN GANIMET" in prompt
+```
+
+**Boundary value testleri:**
+
+Accuracy eşiklerini (70, 69, 40, 39) test ettik — bunlar savaş mekaniğinin
+kritik noktaları. Örneğin accuracy=70 "başarılı" iken 69 "kısmi başarılı".
+Bir off-by-one hatası oyun dengesini bozabilir.
+
+### Dosya Değişiklikleri
+
+| Dosya | Durum | Değişiklik |
+|-------|-------|-----------|
+| `tests/test_prompts.py` | [YENİ] | ~380 satır — 55 test |
+
+### Test Sonuçları
+
+```
+$ python -m pytest tests/ -v
+============================= 140 passed in 0.32s =============================
+```
+
+Test artışı: 85 → 140 (+55 yeni prompt testi)
+
+---
+
 ## TEST SAYISI TARİHÇESİ
 
 | Tarih | Aşama | Toplam Test | Artış |
@@ -417,6 +600,7 @@ Test artışı: 68 → 85 (+17 yeni shop testi)
 | 2026-06-03 | Aşama 0 tamamlandı | 68 | +68 |
 | 2026-06-04 | Aşama 1 tamamlandı | 68 | 0 (test eklenmedi) |
 | 2026-06-04 | Aşama 2 tamamlandı | 85 | +17 |
+| 2026-06-06 | Aşama 3 tamamlandı | 140 | +55 |
 
 ---
 
@@ -428,7 +612,8 @@ Aşağıdaki tablo projeye eklenen ve değiştirilen dosyaları gösterir:
 python_dnd/
 ├── game_data.py             [YENİ — Aşama 2.1]  Statik sözlükler
 ├── shop_system.py           [YENİ — Aşama 2.3]  ShopSystem sınıfı
-├── game_state.py            [DEĞİŞTİ — Aşama 2] ~150 satır azaldı
+├── prompt_builder.py        [YENİ — Aşama 3.1]  PromptBuilder sınıfı
+├── game_state.py            [DEĞİŞTİ — Aşama 2,3] ~250 satır azaldı
 ├── main.py                  [DEĞİŞTİ — Aşama 1] Bug düzeltmeleri
 ├── ai_manager.py            [DEĞİŞTİ — Aşama 1] ast.literal_eval kaldırıldı
 ├── requirements.txt         [DEĞİŞTİ — Aşama 0] Üst sınır + pytest
@@ -441,5 +626,6 @@ python_dnd/
     ├── test_ai_parse.py      9 test
     ├── test_config.py        9 test
     ├── test_snapshots.py     10 test (characterization)
-    └── test_shop.py          17 test [Aşama 2.4]
+    ├── test_shop.py          17 test [Aşama 2.4]
+    └── test_prompts.py       55 test [Aşama 3.4]
 ```

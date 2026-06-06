@@ -998,10 +998,10 @@ Oyun normal çalışır.
 
 ### AŞAMA 3: Prompt Ayrıştırma (Orta Risk)
 
-- [ ] 3.1 — `prompt_builder.py` oluştur — saf fonksiyonlar (static method) (S08) — Risk: Orta
-- [ ] 3.2 — Prompt metodlarını parametre bazlı olarak taşı (S08) — Risk: Orta
-- [ ] 3.3 — `game_state.py`'deki çağrı noktalarını güncelle (verileri parametre olarak geçir) (S08) — Risk: Orta
-- [ ] 3.4 — `test_prompts.py` — prompt fonksiyonlarını test et (saf fonksiyon, mock gereksiz) (S16) — Risk: Sıfır
+- [x] 3.1 — `prompt_builder.py` oluştur — saf fonksiyonlar (static method) (S08) — Risk: Orta
+- [x] 3.2 — Prompt metodlarını parametre bazlı olarak taşı (S08) — Risk: Orta
+- [x] 3.3 — `game_state.py`'deki çağrı noktalarını güncelle (verileri parametre olarak geçir) (S08) — Risk: Orta
+- [x] 3.4 — `test_prompts.py` — prompt fonksiyonlarını test et (saf fonksiyon, mock gereksiz) (S16) — Risk: Sıfır
 
 **NOT:** `PromptBuilder` artık `GameState` referansı ALMAZ.
 Her metod sadece ihtiyacı olan verileri parametre olarak alır.
