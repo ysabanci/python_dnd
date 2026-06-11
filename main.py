@@ -25,6 +25,7 @@ from fist_challenge import FistChallenge
 from music_manager import MusicManager
 from dice_challenge import DiceChallenge
 from config_manager import load_config
+from combat_manager import CombatManager
 
 
 class DnDGame:
@@ -44,20 +45,16 @@ class DnDGame:
     SHAPE_TYPES = [ShapeType.TRIANGLE, ShapeType.SQUARE, ShapeType.CIRCLE,
                    ShapeType.RECTANGLE, ShapeType.INFINITY]
 
-    # Dusman saldiri suresi (saniye)
-    ENEMY_ATTACK_DURATION = 3.0
+    # Dusman saldiri suresi artik CombatManager'da
+    ENEMY_ATTACK_DURATION = CombatManager.ENEMY_ATTACK_DURATION
 
-    # Kritik vurus esigi (sekil challenge %85+)
-    CRITICAL_HIT_THRESHOLD = 85
-
-    # Basarili saldiri sonrasi ekstra tur sansi (%30)
-    EXTRA_TURN_CHANCE = 0.30
-
-    # Savas aksiyon sabitleri
-    ACTION_ATTACK = ("saldir", "saldiri", "buyu")
-    ACTION_DEFENSE = ("savun", "savunma")
-    ACTION_FLEE = ("kac", "kacis")
-    ACTION_MAGIC = "buyu"
+    # Savaş sabitleri artık CombatManager'da — geriye uyumluluk için referanslar
+    CRITICAL_HIT_THRESHOLD = CombatManager.CRITICAL_HIT_THRESHOLD
+    EXTRA_TURN_CHANCE = CombatManager.EXTRA_TURN_CHANCE
+    ACTION_ATTACK = CombatManager.ACTION_ATTACK
+    ACTION_DEFENSE = CombatManager.ACTION_DEFENSE
+    ACTION_FLEE = CombatManager.ACTION_FLEE
+    ACTION_MAGIC = CombatManager.ACTION_MAGIC
 
     def __init__(self, config: dict = None):
         self._config = config or load_config()
@@ -100,24 +97,12 @@ class DnDGame:
 
         # ----- Oyun Fazı -----
         self.current_phase = self.PHASE_NORMAL
-        self._pending_combat_choice = ""
 
-        # ----- Silah Secim Fazi -----
-        self._weapon_select_options: list = []
-        self._selected_weapon: str = ""
-        self._weapon_combat_action: str = ""
+        # ----- Savaş Yöneticisi -----
+        self.combat = CombatManager()
 
-        # ----- Dusman Saldiri Fazi -----
-        self._enemy_attack_start: float = 0.0
-        self._enemy_attack_damage: int = 0
-        self._enemy_attack_applied: bool = False
-
-        # ----- Ekstra Tur (saldiri sonrasi) -----
-        self._extra_turn_active: bool = False
-
-        # ----- Basarili savunma bayraği -----
-        self._defense_blocked: bool = False
-        self._defense_partial: bool = False
+        # Geriye uyumluluk: eski self._xxx erişimleri için property benzeri referanslar
+        # NOT: Aşama 4.4-4.6'da bu erişimler de CombatManager üzerinden yapılacak
 
         # ----- Muzik: son bilinen mod (gecis tespiti icin) -----
         self._last_music_mode: str = ""
@@ -396,50 +381,40 @@ class DnDGame:
         self.ai.request_story(history)
 
     def _start_combat_challenge(self, choice_text: str) -> None:
-        """Savas modunda secim yapildiginda silah secimi veya challenge baslatir."""
-        self._pending_combat_choice = choice_text
+        """Savas modunda secim yapildiginda silah secimi veya challenge baslatir.
+        CombatManager.resolve_weapon_selection()'a delege eder."""
         self.tracker.reset_selection()
 
-        action_lower = choice_text.lower()
-        is_attack = action_lower in self.ACTION_ATTACK
+        weapons = self.state.get_combat_weapons()
+        result = self.combat.resolve_weapon_selection(choice_text, weapons)
 
-        if is_attack:
-            # Saldiri/Buyu: once silah sec, sonra challenge
-            weapons = self.state.get_combat_weapons()
-            self._weapon_select_options = weapons
-            self._weapon_combat_action = choice_text
+        if result["outcome"] == "unarmed":
+            self.state.equipped_weapon = "Yumruk"
+            print(f"[>] Silahsiz savas! Yumruk kullaniliyor.")
+            self._start_actual_challenge(choice_text)
 
-            if len(weapons) == 0:
-                # Silahsiz savas - yumruk
-                self._selected_weapon = "Yumruk"
-                self.state.equipped_weapon = "Yumruk"
-                print(f"[>] Silahsiz savas! Yumruk kullaniliyor.")
-                self._start_actual_challenge(choice_text)
-            elif len(weapons) == 1:
-                self._selected_weapon = weapons[0]
-                self.state.equipped_weapon = self._selected_weapon
-                print(f"[>] Tek silah, otomatik secildi: {self._selected_weapon}")
-                self._start_actual_challenge(choice_text)
-            else:
-                option_keys = ["sol_ust", "sag_ust", "sol_alt", "sag_alt"]
-                self.state.current_options = {}
-                for i, key in enumerate(option_keys):
-                    if i < len(weapons):
-                        self.state.current_options[key] = weapons[i]
-                    else:
-                        self.state.current_options[key] = ""
-                self.state.active_option_count = min(len(weapons), 4)
-                self.state.current_story = f"{choice_text} icin silahini sec!"
-                self.current_phase = self.PHASE_WEAPON_SELECT
-                print(f"[>] Silah secim fazi basladi: {weapons}")
+        elif result["outcome"] == "auto_select":
+            self.state.equipped_weapon = result["selected_weapon"]
+            print(f"[>] Tek silah, otomatik secildi: {result['selected_weapon']}")
+            self._start_actual_challenge(choice_text)
+
+        elif result["outcome"] == "manual_select":
+            self.state.current_options = result["weapon_options"]
+            self.state.active_option_count = result["option_count"]
+            self.state.current_story = f"{choice_text} icin silahini sec!"
+            self.current_phase = self.PHASE_WEAPON_SELECT
+            print(f"[>] Silah secim fazi basladi: {weapons}")
+
         else:
-            # Savunma/Kacis: direkt challenge
+            # no_weapon_needed — savunma/kacis
             self._start_actual_challenge(choice_text)
 
     def _start_actual_challenge(self, choice_text: str) -> None:
-        """Rastgele challenge (sekil veya yumruk) baslatir."""
-        # Rastgele: %60 sekil cizme, %40 yumruk challenge
-        if random.random() < 0.6:
+        """Rastgele challenge (sekil veya yumruk) baslatir.
+        CombatManager.pick_challenge_type()'a delege eder."""
+        challenge_type = self.combat.pick_challenge_type()
+
+        if challenge_type == "shape":
             shape = random.choice(self.SHAPE_TYPES)
             self.shape_challenge.start_challenge(shape, choice_text)
             self.current_phase = self.PHASE_SHAPE_CHALLENGE
@@ -468,277 +443,184 @@ class DnDGame:
     def _process_player_combat_result(self, accuracy: float, action: str,
                                        is_shape: bool = True) -> None:
         """
-        Oyuncunun challenge sonucunu isler (yeni turn-based mantik).
+        Oyuncunun challenge sonucunu isler (CombatManager'a delege eder).
 
-        Kurallar:
-          - Saldiri/Buyu:
-              %85+ (sekil) = KRITIK VURUS (1.5x hasar)
-              %70+ = basarili (normal hasar)
-              %40+ = kismi (az hasar + oyuncu az hasar alir)
-              <%40 = basarisiz (oyuncu hasar alir)
-            Basarili saldiri sonrasi %30 ekstra tur sansi
-          - Savunma:
-              %70+ = basarili -> can yenilenir
-              %40+ = kismi -> az hasar
-              <%40 = basarisiz -> normal hasar
-          - Kac:
-              %70+ = basarili kacis
-              <%70 = basarisiz, hasar alir
+        CombatManager.evaluate_combat_result() karar mantığını yürütür,
+        bu wrapper yan etkileri (state, faz, challenge reset) uygular.
         """
-        action_lower = action.lower()
-        is_attack = action_lower in self.ACTION_ATTACK
-        is_defense = action_lower in self.ACTION_DEFENSE
-        is_flee = action_lower in self.ACTION_FLEE
-
-        grant_extra_turn = False
-
-        # Stat etkileri
         stat_fx = self.state.get_stat_effect_on_combat()
 
-        if is_attack:
-            self._process_attack(accuracy, action, is_shape, stat_fx)
-            # Basarili saldiri -> ekstra tur sansi (LUCK arttirir)
-            extra_chance = self.EXTRA_TURN_CHANCE + stat_fx.get("extra_turn_bonus", 0)
-            if accuracy >= 70 and random.random() < extra_chance:
-                grant_extra_turn = True
+        # CombatManager'da hesaplama + karar
+        result = self.combat.evaluate_combat_result(
+            accuracy=accuracy,
+            action=action,
+            is_shape=is_shape,
+            selected_weapon=self.combat.selected_weapon,
+            weapon_stats=self.state.get_weapon_stats(self.combat.selected_weapon),
+            class_bonus=self.state.get_class_bonus(),
+            stat_fx=stat_fx,
+            enemy_hp=self.state.enemy_hp,
+            player_hp=self.state.character.hp,
+        )
 
-        elif is_defense:
-            self._process_defense(accuracy)
+        action_result = result["action_result"]
+        outcome = result["outcome"]
 
-        elif is_flee:
-            self._process_flee(accuracy, stat_fx)
+        # Aksiyon sonuçlarını state'e uygula
+        if result["action_type"] == "attack":
+            self.state.enemy_hp = result["new_enemy_hp"]
+            self.state.current_feedback = action_result["description"]
+            self.state.current_story = action_result["description"]
+
+        elif result["action_type"] == "defense":
+            if action_result.get("heal", 0) > 0:
+                self.state.modify_hp(action_result["heal"])
+            self.state.current_feedback = action_result["description"]
+            self.state.current_story = action_result["description"]
+
+        elif result["action_type"] == "flee":
+            self.state.current_feedback = action_result["description"]
 
         print(f"[!] HP: {self.state.character.hp} | Dusman HP: {self.state.enemy_hp}")
 
-        # HP 0 kontrolu
-        if self.state.character.hp <= 0:
+        # Sonuca göre yan etkileri uygula
+        if outcome == "game_over":
             self.state.is_game_over = True
             self.state.game_over_reason = "Savas sirasinda yenildin!"
             self.current_phase = self.PHASE_NORMAL
             self.shape_challenge.reset()
             self.fist_challenge.reset()
-            return
 
-        # Dusman yenildiyse -> AI'a bildir
-        if self.state.enemy_hp <= 0:
+        elif outcome == "enemy_defeated":
             self._send_combat_result(accuracy, action)
             self.shape_challenge.reset()
             self.fist_challenge.reset()
-            return
 
-        # Kacis basariliysa -> AI'a bildir (sinif bonusuyla esik kontrol)
-        class_bonus = self.state.get_class_bonus()
-        flee_threshold = class_bonus.get("flee_threshold", 70)
-        if is_flee and accuracy >= flee_threshold:
+        elif outcome == "flee_success":
             self._send_combat_result(accuracy, action)
             self.shape_challenge.reset()
             self.fist_challenge.reset()
-            return
 
-        # Ekstra tur kontrolu
-        if grant_extra_turn:
-            self._extra_turn_active = True
-            self.state.current_feedback += " | EKSTRA TUR!"
+        elif outcome == "extra_turn":
+            self.state.current_feedback += result["feedback_append"]
             print("[!] EKSTRA TUR kazanildi!")
-            # Direkt oyuncunun sirasina don (dusman saldiramaz)
             self.current_phase = self.PHASE_NORMAL
             self._restore_combat_options()
             self.shape_challenge.reset()
             self.fist_challenge.reset()
-            return
 
-        # Normal akis: dusman saldiri fazina gec
-        self._start_enemy_attack()
-        self.shape_challenge.reset()
-        self.fist_challenge.reset()
+        elif outcome == "enemy_attack":
+            self._start_enemy_attack()
+            self.shape_challenge.reset()
+            self.fist_challenge.reset()
 
     def _process_attack(self, accuracy: float, action: str,
                         is_shape: bool, stat_fx: dict = None) -> None:
         """
-        Saldiri/Buyu sonucunu isler.
-        Silahsiz = cok az hasar. Silahli = normal hasar + description.
+        Saldiri/Buyu sonucunu isler. CombatManager'a delege eder.
         """
         if stat_fx is None:
             stat_fx = self.state.get_stat_effect_on_combat()
 
-        weapon_stats = self.state.get_weapon_stats(self._selected_weapon)
-        class_bonus = self.state.get_class_bonus()
-        weapon_bonus = weapon_stats.get("bonus", 0)
-        weapon_type = weapon_stats.get("type", "fiziksel")
-        is_unarmed = self._selected_weapon in ("Yumruk", "")
+        result = self.combat.process_attack(
+            accuracy=accuracy,
+            action=action,
+            is_shape=is_shape,
+            selected_weapon=self.combat.selected_weapon,
+            weapon_stats=self.state.get_weapon_stats(self.combat.selected_weapon),
+            class_bonus=self.state.get_class_bonus(),
+            stat_fx=stat_fx,
+            enemy_hp=self.state.enemy_hp,
+        )
 
-        action_lower = action.lower()
-        if action_lower == self.ACTION_MAGIC or weapon_type == "buyusel":
-            class_mult = class_bonus.get("magic_mult", 1.0)
-            stat_bonus = stat_fx.get("magic_bonus", 0)
-        else:
-            class_mult = class_bonus.get("attack_mult", 1.0)
-            stat_bonus = stat_fx.get("attack_bonus", 0)
-
-        crit_threshold = self.CRITICAL_HIT_THRESHOLD - stat_fx.get("crit_bonus", 0)
-
-        # Silahsiz hasar cok dusuk
-        if is_unarmed:
-            weapon_bonus = 0
-            class_mult = 0.3
-
-        # Betimlemeler
-        weapon_name = self._selected_weapon if not is_unarmed else "yumruklari"
-
-        if is_shape and accuracy >= crit_threshold:
-            if is_unarmed:
-                base_dmg = random.randint(5, 12) + stat_bonus
-            else:
-                base_dmg = random.randint(30, 50) + weapon_bonus + stat_bonus
-            enemy_dmg = int(base_dmg * 1.5 * class_mult)
-            self.state.enemy_hp = max(0, self.state.enemy_hp - enemy_dmg)
-            desc = f"KRITIK VURUS! {weapon_name} ile muhtesem bir darbe! -{enemy_dmg} hasar!"
-            self.state.current_feedback = desc
-            self.state.current_story = desc
-        elif accuracy >= 70:
-            if is_unarmed:
-                base_dmg = random.randint(3, 8) + stat_bonus
-            else:
-                base_dmg = random.randint(25, 40) + weapon_bonus + stat_bonus
-            enemy_dmg = int(base_dmg * class_mult)
-            self.state.enemy_hp = max(0, self.state.enemy_hp - enemy_dmg)
-            desc = f"{weapon_name} ile guclu bir {action}! Dusmana -{enemy_dmg} hasar!"
-            self.state.current_feedback = desc
-            self.state.current_story = desc
-        elif accuracy >= 40:
-            if is_unarmed:
-                base_dmg = random.randint(1, 4) + stat_bonus // 2
-            else:
-                base_dmg = random.randint(10, 20) + weapon_bonus // 2 + stat_bonus // 2
-            enemy_dmg = int(base_dmg * class_mult)
-            self.state.enemy_hp = max(0, self.state.enemy_hp - enemy_dmg)
-            desc = f"{weapon_name} ile sikiyoruz ama tam isabetle degil. -{enemy_dmg} hasar."
-            self.state.current_feedback = desc
-            self.state.current_story = desc
-        else:
-            desc = f"{weapon_name} ile hamle basarisiz! Dusman saldirisi geliyor!"
-            self.state.current_feedback = desc
-            self.state.current_story = desc
+        # Sonuçları state'e uygula
+        self.state.enemy_hp = result["new_enemy_hp"]
+        self.state.current_feedback = result["description"]
+        self.state.current_story = result["description"]
 
     def _process_defense(self, accuracy: float) -> None:
         """
-        Savunma sonucunu isler.
-
-        Savunma ASLA dogrudan hasar vermez. Bunun yerine bir kalkan durumu
-        belirler ve dusmanin bir sonraki saldiri hasarini etkiler:
-          - Basarili (>=70%): Dusmanin saldirisi tamamen engellenir + HP yenilenir
-          - Kismi (>=40%): Dusmanin saldiri hasari %50 azalir
-          - Basarisiz (<40%): Dusman tam hasar verir (ama challenge'dan hasar yok)
+        Savunma sonucunu isler. CombatManager'a delege eder.
+        CombatManager defense_blocked/defense_partial bayraklarını günceller.
         """
-        if accuracy >= 70:
-            heal = random.randint(8, 20)
-            self.state.modify_hp(heal)
-            desc = f"Mukemmel savunma! Kalkanini yukseltip tum hasari engelledin! +{heal} HP yenilendi!"
-            self.state.current_feedback = desc
-            self.state.current_story = desc
-            self._defense_blocked = True
-            self._defense_partial = False
-        elif accuracy >= 40:
-            desc = "Savunma durusuna gectin ama tam koruyamadin. Hasar azalacak."
-            self.state.current_feedback = desc
-            self.state.current_story = desc
-            self._defense_blocked = False
-            self._defense_partial = True
-        else:
-            desc = "Savunma basarisiz! Dusman tam gucuyle saldiriyor!"
-            self.state.current_feedback = desc
-            self.state.current_story = desc
-            self._defense_blocked = False
-            self._defense_partial = False
+        result = self.combat.process_defense(accuracy)
+
+        # Sonuçları state'e uygula
+        if result["heal"] > 0:
+            self.state.modify_hp(result["heal"])
+        self.state.current_feedback = result["description"]
+        self.state.current_story = result["description"]
 
     def _process_flee(self, accuracy: float, stat_fx: dict = None) -> None:
         """
-        Kacis sonucunu isler.
-        DEX stat'i kacis basari esigini dusurur.
+        Kacis sonucunu isler. CombatManager'a delege eder.
         """
         if stat_fx is None:
             stat_fx = self.state.get_stat_effect_on_combat()
 
-        class_bonus = self.state.get_class_bonus()
-        flee_threshold = class_bonus.get("flee_threshold", 70)
-        # DEX bazli kacis bonusu (esigi dusurur)
-        flee_threshold = max(30, flee_threshold - stat_fx.get("flee_bonus", 0))
-
-        if accuracy >= flee_threshold:
-            self.state.current_feedback = "Basariyla kactin!"
-        else:
-            self.state.current_feedback = "Kacilamadi! Dusman saldirisi geliyor!"
+        result = self.combat.process_flee(
+            accuracy=accuracy,
+            class_bonus=self.state.get_class_bonus(),
+            stat_fx=stat_fx,
+        )
+        self.state.current_feedback = result["description"]
 
     # ------------------------------------------------------------------ #
     #  DUSMAN SALDIRI FAZI                                                #
     # ------------------------------------------------------------------ #
 
     def _start_enemy_attack(self) -> None:
-        """Dusman saldiri fazini baslatir. DEF stat'i hasari azaltir, DEX dodge sansi verir."""
+        """Dusman saldiri fazini baslatir. CombatManager'a delege eder."""
         stat_fx = self.state.get_stat_effect_on_combat()
-
-        # DEX bazli dodge (tamamen kacinma)
-        dodge_chance = stat_fx.get("dodge_chance", 0)
-        if dodge_chance > 0 and random.random() < dodge_chance:
-            self._enemy_attack_damage = 0
-            self._defense_blocked = True
-            print(f"[>] DEX DODGE! Dusman saldirisi atlatildi!")
-            self._enemy_attack_start = time.time()
-            self._enemy_attack_applied = False
-            self.current_phase = self.PHASE_ENEMY_ATTACK
-            return
-
-        # Sinif savunma bonusu (Okcu: %20 hasar azaltma)
         class_bonus = self.state.get_class_bonus()
-        defense_reduction = class_bonus.get("defense_reduction", 0.0)
-        # DEF stat bazli ek azaltma
-        stat_defense = stat_fx.get("defense_reduction", 0.0)
-        total_reduction = min(0.6, defense_reduction + stat_defense)
 
-        if self._defense_blocked:
-            self._enemy_attack_damage = 0
+        result = self.combat.calculate_enemy_damage(
+            stat_fx=stat_fx,
+            class_bonus=class_bonus,
+        )
+
+        if result["dodged"]:
+            print(f"[>] DEX DODGE! Dusman saldirisi atlatildi!")
+        elif result["blocked"]:
             print(f"[>] Dusman saldiri fazi basladi! SAVUNMA ENGELLEDI - Hasar: 0")
-        elif self._defense_partial:
-            full_dmg = random.randint(8, 22)
-            reduced = int(full_dmg * (1.0 - total_reduction))
-            self._enemy_attack_damage = reduced // 2
-            print(f"[>] Dusman saldiri fazi: KISMI SAVUNMA - Hasar: {self._enemy_attack_damage}")
+        elif result["partial"]:
+            print(f"[>] Dusman saldiri fazi: KISMI SAVUNMA - Hasar: {result['damage']}")
         else:
-            full_dmg = random.randint(8, 22)
-            self._enemy_attack_damage = int(full_dmg * (1.0 - total_reduction))
-            print(f"[>] Dusman saldiri fazi: Hasar: {self._enemy_attack_damage}")
-        self._enemy_attack_start = time.time()
-        self._enemy_attack_applied = False
+            print(f"[>] Dusman saldiri fazi: Hasar: {result['damage']}")
+
+        self.combat.enemy_attack_start = time.time()
         self.current_phase = self.PHASE_ENEMY_ATTACK
 
     def _handle_enemy_attack(self, frame: np.ndarray) -> None:
-        """Dusman saldiri animasyonunu yonetir."""
+        """Dusman saldiri animasyonunu yonetir. CombatManager'a delege eder."""
         now = time.time()
-        elapsed = now - self._enemy_attack_start
-        progress = min(elapsed / self.ENEMY_ATTACK_DURATION, 1.0)
+        elapsed = now - self.combat.enemy_attack_start
 
-        # Hasar animasyonun ortasinda uygulanir (1.5sn'de)
-        if elapsed >= self.ENEMY_ATTACK_DURATION * 0.5 and not self._enemy_attack_applied:
-            if self._defense_blocked:
-                # Savunma basarili: hasar yok
-                print(f"[!] Dusman saldirdi ama SAVUNMA ENGELLEDI! Hasar: 0")
-            else:
-                self.state.modify_hp(-self._enemy_attack_damage)
-                print(f"[!] Dusman saldirdi! -{self._enemy_attack_damage} HP "
-                      f"(kalan: {self.state.character.hp})")
-            self._enemy_attack_applied = True
+        # CombatManager'da hesaplama + karar
+        tick = self.combat.resolve_enemy_attack_tick(
+            elapsed=elapsed,
+            player_hp=self.state.character.hp,
+        )
 
-        # Animasyon ekranini ciz
-        if self._defense_blocked:
-            frame = self.ui.draw_enemy_attack(frame, progress,
+        # Hasar uygulama (mid-animation)
+        if tick["apply_damage"]:
+            self.state.modify_hp(tick["damage_amount"])
+            print(f"[!] Dusman saldirdi! {tick['damage_amount']} HP "
+                  f"(kalan: {self.state.character.hp})")
+
+        # Animasyon ekranini ciz (UI — main.py'de kalır)
+        # S05 fix: dodged veya defense_blocked ise engelleme animasyonu
+        is_blocked_visual = self.combat.defense_blocked or self.combat.dodged
+        if is_blocked_visual:
+            frame = self.ui.draw_enemy_attack(frame, tick["progress"],
                                                0, "Dusman",
                                                blocked=True)
         else:
-            frame = self.ui.draw_enemy_attack(frame, progress,
-                                               self._enemy_attack_damage,
+            frame = self.ui.draw_enemy_attack(frame, tick["progress"],
+                                               self.combat.enemy_attack_damage,
                                                "Dusman")
 
-        # HUD'u da goster (HP degisimini gormek icin)
+        # HUD'u da goster
         frame = self.ui.draw_hud(frame, self.state.character.hp,
                                   self.state.character.max_hp,
                                   self.state.character.gold,
@@ -751,36 +633,16 @@ class DnDGame:
         cv2.imshow(self.WINDOW_NAME, frame)
 
         # Animasyon bitti mi?
-        if progress >= 1.0:
-            # HP kontrolu
-            if self.state.character.hp <= 0:
+        if tick["animation_done"]:
+            if tick["outcome"] == "game_over":
                 self.state.is_game_over = True
                 self.state.game_over_reason = "Dusman saldirisiyla yenildin!"
                 self.current_phase = self.PHASE_NORMAL
-                return
-
-            # Sira tekrar oyuncuya geciyor
-            self.current_phase = self.PHASE_NORMAL
-            self._restore_combat_options()
-            if self._defense_blocked:
-                self.state.current_feedback = (
-                    "Mukemmel savunma! Dusman saldirisi engellendi! "
-                    "Simdi senin siran!"
-                )
-            elif self._defense_partial:
-                self.state.current_feedback = (
-                    f"Kismi savunma! Hasar azaltildi: -{self._enemy_attack_damage} HP. "
-                    f"Simdi senin siran!"
-                )
-            else:
-                self.state.current_feedback = (
-                    f"Dusman saldirdi! -{self._enemy_attack_damage} HP. "
-                    f"Simdi senin siran!"
-                )
-            # Bayraklari sifirla
-            self._defense_blocked = False
-            self._defense_partial = False
-            print(f"[>] Sira oyuncuya gecti. HP: {self.state.character.hp}")
+            elif tick["outcome"] == "player_turn":
+                self.current_phase = self.PHASE_NORMAL
+                self._restore_combat_options()
+                self.state.current_feedback = tick["feedback"]
+                print(f"[>] Sira oyuncuya gecti. HP: {self.state.character.hp}")
 
     # ------------------------------------------------------------------ #
     #  CHALLENGE HANDLER'LAR                                               #
@@ -851,34 +713,8 @@ class DnDGame:
             self._process_player_combat_result(accuracy, action, is_shape=False)
 
     def _get_combat_preview(self, accuracy: float, action: str) -> str:
-        """Challenge sonucuna gore hasar on izleme metni olusturur."""
-        action_lower = action.lower()
-        is_attack = action_lower in self.ACTION_ATTACK
-        is_defense = action_lower in self.ACTION_DEFENSE
-        is_flee = action_lower in self.ACTION_FLEE
-
-        if is_attack:
-            if accuracy >= 85:
-                return "KRITIK! Dusmana buyuk hasar!"
-            elif accuracy >= 70:
-                return "Dusmana hasar verildi!"
-            elif accuracy >= 40:
-                return "Dusmana az hasar verildi."
-            else:
-                return "Dusmana hasar verilemedi!"
-        elif is_defense:
-            if accuracy >= 70:
-                return "Kalkan aktif! Hasar engellendi!"
-            elif accuracy >= 40:
-                return "Kismi kalkan! Hasar azalacak."
-            else:
-                return "Kalkan yok! Tam hasar gelecek."
-        elif is_flee:
-            if accuracy >= 70:
-                return "Basariyla kaciliyor!"
-            else:
-                return "Kacilamadi! Hasar gelecek."
-        return ""
+        """Challenge sonucuna gore hasar on izleme metni olusturur. CombatManager'a delege eder."""
+        return self.combat.get_combat_preview(accuracy, action)
 
     # ------------------------------------------------------------------ #
     #  SILAH SECIM VE ZAR HANDLER'LARI                                     #
@@ -914,12 +750,12 @@ class DnDGame:
             key = qmap_rev.get(selected, "")
             weapon_name = self.state.current_options.get(key, "")
             if weapon_name:
-                self._selected_weapon = weapon_name
+                self.combat.selected_weapon = weapon_name
                 self.state.equipped_weapon = weapon_name
                 self.tracker.reset_selection()
                 print(f"[>] Silah secildi: {weapon_name}")
                 # Challenge'i baslat
-                self._start_actual_challenge(self._weapon_combat_action)
+                self._start_actual_challenge(self.combat.weapon_combat_action)
                 return
 
         # UI ciz
@@ -1191,7 +1027,7 @@ class DnDGame:
     def _send_combat_result(self, accuracy: float, action: str) -> None:
         """Savas sonucunu AI'a gonderir."""
         self.current_phase = self.PHASE_NORMAL
-        self._extra_turn_active = False
+        self.combat.extra_turn_active = False
 
         # Sonucu state'e kaydet
         self.state.pending_combat_result = {
@@ -1268,9 +1104,9 @@ class DnDGame:
         self.shape_challenge.reset()
         self.fist_challenge.reset()
         self.dice_challenge.reset()
-        self._extra_turn_active = False
+        self.combat.extra_turn_active = False
         self._last_music_mode = ""
-        self._selected_weapon = ""
+        self.combat.selected_weapon = ""
         self._inventory_page = 0
         self._inv_dwell_target = ""
         self.music.stop()

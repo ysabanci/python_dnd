@@ -746,11 +746,14 @@ class GameState:
 
     def _parse_hp_changes(self, ai_response: Dict[str, Any]) -> None:
         """
-        AI yanıtındaki hikaye metninden HP, eşya ve altın değişimlerini ayrıştırır.
+        AI yanıtındaki hikaye metninden eşya ve altın değişimlerini ayrıştırır.
+        HP tag'leri UYGULANMAZ, sadece metinden temizlenir.
+
+        HP değişimleri artık SADECE hp_degisim JSON alanından uygulanır
+        (çift uygulama riski — S02 fix).
 
         Format örnekleri:
-            [HP:-10]  → 10 hasar
-            [HP:+5]   → 5 iyileşme
+            [HP:-10]  → Metinden temizlenir (uygulanmaz, hp_degisim kullanılır)
             [ESYA:Büyülü Yüzük]  → Envantere ekleme
             [ALTIN:+20]  → 20 altın kazanma
 
@@ -761,10 +764,8 @@ class GameState:
 
         story = ai_response.get("hikaye_metni", "")
 
-        # HP değişimlerini bul ve uygula
-        hp_matches = re.findall(r"\[HP:([+-]?\d+)\]", story)
-        for match in hp_matches:
-            self.modify_hp(int(match))
+        # HP tag'leri artık UYGULANMAZ — sadece temizlenir
+        # (hp_degisim JSON alanı tek kaynak — S02 fix)
 
         # Eşya eklemelerini bul ve uygula
         item_matches = re.findall(r"\[ESYA:(.+?)\]", story)

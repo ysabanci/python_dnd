@@ -593,6 +593,528 @@ Test artışı: 85 → 140 (+55 yeni prompt testi)
 
 ---
 
+## [Aşama 4.1 + 4.2 + 4.3] — Savaş Yöneticisi: Temel Yapı + Bayraklar + İşlem Metodları
+
+- **Tarih:** 2026-06-11
+- **Agent:** Antigravity (Opus 4.6)
+- **İlgili Sorunlar:** S07 (main.py God Object)
+- **Plan Uyumu:** ✅ Plana tam uygun. 4.1-4.3 birlikte yapıldı (birbirine bağımlı adımlar).
+
+### Ne Yapıldı
+
+**4.1 — `combat_manager.py` oluşturma:**
+
+`CombatManager` sınıfı oluşturuldu. UI'a bağımlılık YOK (frame, draw, cv2
+referansı yok). Savaş sabitleri (`CRITICAL_HIT_THRESHOLD`, `EXTRA_TURN_CHANCE`,
+`ACTION_ATTACK/DEFENSE/FLEE/MAGIC`) bu sınıfa taşındı.
+
+**4.2 — Savaş bayraklarını taşıma (10 attribute):**
+
+| Eski (DnDGame) | Yeni (CombatManager) |
+|---|---|
+| `self._pending_combat_choice` | `self.combat.pending_combat_choice` |
+| `self._weapon_select_options` | `self.combat.weapon_select_options` |
+| `self._selected_weapon` | `self.combat.selected_weapon` |
+| `self._weapon_combat_action` | `self.combat.weapon_combat_action` |
+| `self._enemy_attack_start` | `self.combat.enemy_attack_start` |
+| `self._enemy_attack_damage` | `self.combat.enemy_attack_damage` |
+| `self._enemy_attack_applied` | `self.combat.enemy_attack_applied` |
+| `self._extra_turn_active` | `self.combat.extra_turn_active` |
+| `self._defense_blocked` | `self.combat.defense_blocked` |
+| `self._defense_partial` | `self.combat.defense_partial` |
+
+`CombatManager.reset()` tüm bayrakları başlangıç değerlerine sıfırlar.
+
+**4.3 — Savaş işlem metodlarını taşıma (3 + 1 metod):**
+
+| Eski (DnDGame) | Yeni (CombatManager) | Satır |
+|---|---|---|
+| `_process_attack()` | `process_attack()` | ~555-621 (~66 satır) |
+| `_process_defense()` | `process_defense()` | ~623-652 (~30 satır) |
+| `_process_flee()` | `process_flee()` | ~654-670 (~17 satır) |
+| `_get_combat_preview()` | `get_combat_preview()` | ~772-800 (~29 satır) |
+
+### Teknik Kararlar
+
+**1. En kritik karar: Result dict pattern (state mutasyonu yerine)**
+
+Orijinal metodlar doğrudan `self.state.enemy_hp`, `self.state.current_feedback`
+gibi değerleri değiştiriyordu. `CombatManager`'da bu mutasyonlar kaldırıldı.
+Bunun yerine hesaplama sonucu bir dict olarak döndürülüyor:
+
+```python
+# combat_manager.py — SAF hesaplama
+def process_attack(...) -> Dict:
+    ...
+    return {"enemy_dmg": ..., "new_enemy_hp": ..., "description": ..., "is_critical": ...}
+
+# main.py — wrapper sonuçları uygular
+def _process_attack(self, ...):
+    result = self.combat.process_attack(...)
+    self.state.enemy_hp = result["new_enemy_hp"]
+    self.state.current_feedback = result["description"]
+```
+
+Bu PromptBuilder için kullanılan aynı pattern'dir. Avantajları:
+- `CombatManager` test edilebilir (GameState gerekmez)
+- State mutasyonları tek yerde (wrapper)
+- İleride replay/undo sistemi eklenebilir
+
+**2. `process_defense` istisnası — bayrak mutasyonu CombatManager içinde:**
+
+`process_defense` sonucunda `defense_blocked` ve `defense_partial` bayrakları
+CombatManager içinde güncelleniyor (çünkü bu bayraklar CombatManager'a ait).
+Ama HP iyileşmesi ve feedback yazma gibi state mutasyonları hala wrapper'da:
+
+```python
+result = self.combat.process_defense(accuracy)
+if result["heal"] > 0:
+    self.state.modify_hp(result["heal"])  # state mutasyonu wrapper'da
+```
+
+**3. Geriye uyumluluk referansları:**
+
+Savaş sabitleri `DnDGame` sınıfında referans olarak korundu:
+```python
+CRITICAL_HIT_THRESHOLD = CombatManager.CRITICAL_HIT_THRESHOLD
+ACTION_ATTACK = CombatManager.ACTION_ATTACK
+```
+Bu sayede test_snapshots.py gibi mevcut testlerde `self.ACTION_ATTACK` erişimleri
+çalışmaya devam eder. İleride bu referanslar kaldırılabilir.
+
+**4. Tüm `self._xxx` referanslarının `self.combat.xxx`'e dönüştürülmesi:**
+
+`main.py`'deki tüm eski bayrak referansları (10 attribute × ~40 kullanım noktası)
+toplu değiştirildi. Bu, 4.4-4.6 adımlarında taslanan `_start_enemy_attack`,
+`_handle_enemy_attack` gibi metodların da sorunsuz taşınmasını sağlar.
+
+### Dosya Değişiklikleri
+
+| Dosya | Durum | Değişiklik |
+|-------|-------|-----------|
+| `combat_manager.py` | [YENİ] | ~290 satır — CombatManager sınıfı |
+| `main.py` | [DEĞİŞTİ] | ~120 satır inline savaş kodu → ~35 satır wrapper |
+
+### Dikkat Edilecekler
+
+- `main.py`'deki `_process_player_combat_result`, `_start_enemy_attack`,
+  `_handle_enemy_attack` metodları hala `main.py`'de. Bunlar Aşama 4.4-4.5'te
+  taşınacak.
+- Bu metodlar artık `self.combat.defense_blocked`, `self.combat.enemy_attack_damage`
+  gibi CombatManager attribute'larına erişiyor.
+- `CombatManager` `game_state.py`'i import ETMEZ → circular import riski SİFIR.
+- `self.combat.reset()` yeni savaş başlangıcında çağrılarak tüm bayraklar
+  sıfırlanabilir.
+
+### Test Sonuçları
+
+```
+$ python -m pytest tests/ -v
+============================= 140 passed in 0.28s =============================
+```
+
+Test sayısı değişmedi — test_combat.py Aşama 4.7'de eklenecek.
+
+---
+
+## [Aşama 4.4] — Savaş Orkestrasyon Mantığının Taşınması
+
+- **Tarih:** 2026-06-11
+- **Agent:** Antigravity (Opus 4.6)
+- **İlgili Sorunlar:** S07 (main.py God Object)
+- **Plan Uyumu:** ✅ Plana tam uygun
+
+### Ne Yapıldı
+
+`_process_player_combat_result` — savaş döngüsünün **en kritik orkestrasyon
+metodu** — CombatManager'a `evaluate_combat_result` olarak taşındı.
+
+Bu metod savaş sonucunun tüm karar ağacını yönetir:
+1. Aksiyonu sınıflandır (saldırı/savunma/kaçış)
+2. İlgili `process_*` metodunu çağır
+3. Ekstra tur şansını hesapla
+4. Sonraki adıma karar ver (5 olası outcome)
+
+| Eski (DnDGame) | Yeni (CombatManager) |
+|---|---|
+| `_process_player_combat_result()` | `evaluate_combat_result()` |
+
+### Teknik Kararlar
+
+**1. Outcome dict pattern — "ne yapılmalı" vs "nasıl uygulanmalı" ayrımı:**
+
+`evaluate_combat_result` **karar** verir ama **uygulamaz**. 5 olası outcome:
+
+| outcome | Anlamı | Wrapper ne yapar |
+|---|---|---|
+| `"game_over"` | Oyuncu HP ≤ 0 | `state.is_game_over = True`, faz sıfırla |
+| `"enemy_defeated"` | Düşman HP ≤ 0 | `_send_combat_result()` → AI'a bildir |
+| `"flee_success"` | Kaçış başarılı | `_send_combat_result()` → AI'a bildir |
+| `"extra_turn"` | Ekstra tur kazanıldı | Feedback ekle, faz sıfırla, seçenekleri geri yükle |
+| `"enemy_attack"` | Normal akış | `_start_enemy_attack()` çağır |
+
+```python
+# CombatManager — karar verir
+result = self.combat.evaluate_combat_result(...)
+# main.py — uygular
+if result["outcome"] == "game_over": ...
+elif result["outcome"] == "enemy_defeated": ...
+```
+
+**2. Neden wrapper'daki `_process_attack/defense/flee` atlandı:**
+
+`evaluate_combat_result` doğrudan CombatManager'daki `process_attack/defense/flee`
+metodlarını çağırıyor. Eski main.py wrapper'ları (`_process_attack`, `_process_defense`,
+`_process_flee`) artık hiçbir yerden çağrılmıyor — ölü kod haline geldi.
+Aşama 4 tamamen bittiğinde (4.7 test sonrası) temizlenecek.
+
+**3. Kaçış eşiğinin hesaplanması:**
+
+Orijinal kodda kaçış başarı kontrolü iki yerde yapılıyordu:
+1. `_process_flee()` → feedback mesajı (70 sabit eşik)
+2. `_process_player_combat_result()` → `class_bonus.flee_threshold` ile kontrol
+
+`evaluate_combat_result`'da `process_flee`'nin döndürdüğü `success` alanı
+kullanılarak bu iki kontrol birleştirildi. `process_flee` zaten `flee_threshold`'u
+doğru hesaplıyor (`class_bonus` + `stat_fx` bazlı), dolayısıyla ikinci kontrol
+gereksiz hale geldi → daha temiz.
+
+### Dosya Değişiklikleri
+
+| Dosya | Durum | Değişiklik |
+|-------|-------|-----------|
+| `combat_manager.py` | [DEĞİŞTİ] | +130 satır — `evaluate_combat_result` eklendi |
+| `main.py` | [DEĞİŞTİ] | ~85 satır orkestrasyon → ~45 satır wrapper |
+
+### Dikkat Edilecekler
+
+- `main.py`'deki `_process_attack`, `_process_defense`, `_process_flee` wrapper'ları
+  artık ölü kod. Aşama 4.7 sonrası temizlenecek.
+- `evaluate_combat_result` bayrak mutasyonu yapıyor: `defense_blocked`, `defense_partial`,
+  `extra_turn_active` — bunlar CombatManager'ın kendi state'i.
+- Wrapper hala `_send_combat_result()`, `_start_enemy_attack()`, `_restore_combat_options()`
+  çağrılarını yönetiyor — bunlar UI/AI bağımlı olduğu için main.py'de kalmalı.
+
+### Test Sonuçları
+
+```
+$ python -m pytest tests/ -v
+============================= 140 passed in 0.27s =============================
+```
+
+---
+
+## [Aşama 4.5] — Düşman Saldırı Mantığının Taşınması
+
+- **Tarih:** 2026-06-11
+- **Agent:** Antigravity (Opus 4.6)
+- **İlgili Sorunlar:** S07 (main.py God Object)
+- **Plan Uyumu:** ✅ Plana tam uygun
+
+### Ne Yapıldı
+
+`_start_enemy_attack` ve `_handle_enemy_attack` — düşman saldırı fazının
+**hesaplama ve karar mantığı** CombatManager'a taşındı. UI çizim kodu
+(`draw_enemy_attack`, `draw_hud`, `cv2.imshow`) main.py wrapper'larda kaldı.
+
+| Eski (DnDGame) | Yeni (CombatManager) | İşlev |
+|---|---|---|
+| `_start_enemy_attack()` içi | `calculate_enemy_damage()` | Dodge, savunma, hasar hesabı |
+| `_handle_enemy_attack()` içi | `resolve_enemy_attack_tick()` | Mid-anim hasar + tur sonu karar |
+
+Ek olarak `ENEMY_ATTACK_DURATION` sabiti de CombatManager'a taşındı.
+
+### Teknik Kararlar
+
+**1. `calculate_enemy_damage` — hasar ön-hesaplaması:**
+
+Orijinal `_start_enemy_attack` şunları yapıyordu:
+- DEX dodge şansı kontrolü (tamamen kaçınma)
+- Savunma bayrakları kontrolü (blocked/partial)
+- Sınıf + stat bazlı hasar azaltma hesabı
+- `enemy_attack_damage` bayrağını güncelleme
+- `time.time()` ile zamanlayıcı başlatma
+- Faz geçişi (`current_phase = PHASE_ENEMY_ATTACK`)
+
+`calculate_enemy_damage` sadece ilk 4 maddeyi yapıyor → **saf hesaplama**.
+Zamanlayıcı ve faz geçişi wrapper'da kalıyor:
+
+```python
+# CombatManager — hesaplama
+result = self.combat.calculate_enemy_damage(stat_fx, class_bonus)
+# main.py — zamanlayıcı + faz
+self.combat.enemy_attack_start = time.time()
+self.current_phase = self.PHASE_ENEMY_ATTACK
+```
+
+**2. `resolve_enemy_attack_tick` — frame-bazlı karar:**
+
+Her frame'de çağrılır. 3 şey kontrol eder:
+1. **progress**: Animasyon ilerleme oranı (0.0-1.0)
+2. **apply_damage**: Animasyonun %50 noktasında hasar uygulanacak mı
+3. **outcome**: Animasyon bittiğinde `"game_over"` / `"player_turn"` / `""`
+
+Wrapper sadece sonuca göre `modify_hp`, faz geçişi ve UI çizim yapar.
+
+**3. Neden `time.time()` CombatManager'a taşınmadı:**
+
+`time.time()` IO/side-effect'tir. CombatManager'ı test edilebilir tutmak için
+zaman kontrolü dışarıdan parametre olarak (`elapsed`) geçiriliyor.
+Bu sayede testlerde zaman simülasyonu kolayca yapılabilir:
+
+```python
+# Test: animasyonun %50'sinde hasar uygulanmalı
+tick = cm.resolve_enemy_attack_tick(elapsed=1.5, player_hp=100)
+assert tick["apply_damage"] is True
+```
+
+**4. Bayrak sıfırlama — resolve_enemy_attack_tick'te:**
+
+Animasyon bitip sıra oyuncuya geçtiğinde `defense_blocked` ve `defense_partial`
+bayrakları CombatManager tarafından sıfırlanıyor. Bu, bir sonraki düşman saldırı
+fazında temiz bayrak durumu garantiliyor.
+
+### Dosya Değişiklikleri
+
+| Dosya | Durum | Değişiklik |
+|-------|-------|-----------|
+| `combat_manager.py` | [DEĞİŞTİ] | +145 satır — `calculate_enemy_damage` + `resolve_enemy_attack_tick` |
+| `main.py` | [DEĞİŞTİ] | ~70 satır inline hesaplama → ~40 satır wrapper |
+
+### Dikkat Edilecekler
+
+- `_handle_enemy_attack` wrapper'ı hala UI çizim kodu içeriyor (draw_enemy_attack,
+  draw_hud, cv2.imshow). Bu UI kodları ASLA CombatManager'a taşınmamalı.
+- `_start_enemy_attack` wrapper'ı hala `time.time()` çağırıyor — bu bilinçli bir
+  karar (testlenebilirlik).
+- `ENEMY_ATTACK_DURATION` artık CombatManager'da tanımlı, main.py referans tutuyor.
+
+### Test Sonuçları
+
+```
+$ python -m pytest tests/ -v
+============================= 140 passed in 0.27s =============================
+```
+---
+
+## [Aşama 4.6] — Challenge Başlatma Mantığının Taşınması
+
+- **Tarih:** 2026-06-11
+- **Agent:** Antigravity (Opus 4.6)
+- **İlgili Sorunlar:** S07 (main.py God Object)
+- **Plan Uyumu:** ✅ Plana tam uygun
+
+### Ne Yapıldı
+
+`_start_combat_challenge` ve `_start_actual_challenge` metodlarının **karar
+mantığı** CombatManager'a taşındı. UI/challenge/tracker etkileşimleri wrapper'da kaldı.
+
+| Eski (DnDGame) | Yeni (CombatManager) | İşlev |
+|---|---|---|
+| `_start_combat_challenge()` içi | `resolve_weapon_selection()` | Silah sayısına göre karar (yumruk/otomatik/seçim) |
+| `_start_actual_challenge()` içi | `pick_challenge_type()` | Challenge tipi rastgele seçimi (%60/%40) |
+
+### Teknik Kararlar
+
+**1. `resolve_weapon_selection` — outcome-based pattern:**
+
+4 olası outcome:
+
+| outcome | Koşul | Wrapper ne yapar |
+|---|---|---|
+| `"unarmed"` | Silah yok | `equipped_weapon = "Yumruk"`, challenge başlat |
+| `"auto_select"` | 1 silah | `equipped_weapon = silah`, challenge başlat |
+| `"manual_select"` | 2+ silah | Seçim ekranı göster, faz geçişi |
+| `"no_weapon_needed"` | Savunma/Kaçış | Direkt challenge başlat |
+
+`resolve_weapon_selection` bayrak güncellemelerini (pending_combat_choice,
+selected_weapon, weapon_select_options) kendisi yapıyor.
+
+**2. `pick_challenge_type` — saf karar, sıfır bağımlılık:**
+
+Tek iş: `random.random() < 0.6` kontrolü.
+Şimdi `SHAPE_CHALLENGE_CHANCE` sabiti CombatManager'da tanımlı → test
+edilebilir ve değiştirilebilir.
+
+**3. Neden tracker.reset_selection() taşınmadı:**
+
+Tracker donanım (kamera) bağımlı. CombatManager'ın tracker'a erişimi olmamalı.
+
+### Dosya Değişiklikleri
+
+| Dosya | Durum | Değişiklik |
+|-------|-------|-----------|
+| `combat_manager.py` | [DEĞİŞTİ] | +110 satır — `resolve_weapon_selection` + `pick_challenge_type` |
+| `main.py` | [DEĞİŞTİ] | ~53 satır inline mantık → ~30 satır wrapper |
+
+---
+
+## [Aşama 4.7] — CombatManager Test Suite
+
+- **Tarih:** 2026-06-11
+- **Agent:** Antigravity (Opus 4.6)
+- **İlgili Sorunlar:** S16 (test eksikliği)
+- **Plan Uyumu:** ✅ Plana tam uygun
+
+### Ne Yapıldı
+
+`tests/test_combat.py` oluşturuldu — CombatManager'ın tüm saf hesaplama
+metodlarını kapsayan **60 unit test**.
+
+### Test Kategorileri
+
+| Sınıf | Test Sayısı | Kapsam |
+|---|---|---|
+| `TestProcessAttack` | 9 | Kritik vuruş, başarılı/kısmi/başarısız saldırı, yumruk, büyü |
+| `TestProcessDefense` | 7 | Tam/kısmi/başarısız savunma, sınır değerler |
+| `TestProcessFlee` | 4 | Başarılı/başarısız kaçış, DEX bonus, taban eşik |
+| `TestEvaluateCombatResult` | 6 | Orkestrasyon karar ağacı (5 outcome) |
+| `TestCalculateEnemyDamage` | 5 | Dodge, savunma engelleme, hasar azaltma sınırı |
+| `TestResolveEnemyAttackTick` | 8 | Animasyon zamanlaması, hasar uygulama, tur geçişi |
+| `TestResolveWeaponSelection` | 8 | Silahsız/otomatik/manuel seçim, büyü sınıflandırma |
+| `TestPickChallengeType` | 2 | Dönüş değeri ve dağılım kontrolü |
+| `TestGetCombatPreview` | 10 | Tüm aksiyon+sonuç kombinasyonları |
+| `TestReset` | 1 | Bayrak sıfırlama |
+
+### Teknik Yaklaşım
+
+- **UI bağımlılığı SIFIR** — CombatManager saf hesaplama yaptığı için
+  GameState, frame, cv2, tracker GEREKMEZ.
+- **random.seed(42)** ile deterministik test sonuçları
+- **Sınır değer testleri** — tam olarak %70, %69, %40, %39
+
+### Dosya Değişiklikleri
+
+| Dosya | Durum | Değişiklik |
+|-------|-------|-----------|
+| `tests/test_combat.py` | [YENİ] | ~470 satır, 60 test |
+
+### Test Sonuçları
+
+```
+$ python -m pytest tests/ -v
+============================= 200 passed in 0.31s =============================
+```
+---
+
+## [Aşama 4.8] — S02: HP Çift Uygulama Düzeltmesi
+
+- **Tarih:** 2026-06-11
+- **Agent:** Antigravity (Opus 4.6)
+- **İlgili Sorunlar:** S02 (HP çift uygulama riski)
+- **Plan Uyumu:** ✅ Plana tam uygun
+
+### Ne Yapıldı
+
+`_parse_hp_changes` metodundaki HP uygulaması kaldırıldı. Artık `[HP:-10]` gibi
+hikgâye metnindeki tag'ler **sadece metinden temizlenir**, HP'ye uygulanmaz.
+
+### Sorunun Anatomisi
+
+`update_from_ai_response()` iki farklı yoldan HP uyguluyordu:
+
+1. **Yol 1:** `hp_degisim` JSON alanı → `modify_hp(int(hp_change))` (satır ~248)
+2. **Yol 2:** `_parse_hp_changes()` → `[HP:-10]` tag'leri → `modify_hp()` (satır ~767)
+
+AI hem `"hp_degisim": -10` hem de `[HP:-10]` yazarsa **hasar İKİ KEZ** uygulanırdı.
+
+### Çözüm
+
+```python
+# ESKİ: HP tag'lerini bul ve uygula
+hp_matches = re.findall(r"\[HP:([+-]?\d+)\]", story)
+for match in hp_matches:
+    self.modify_hp(int(match))  # ← KALDIRILDI
+
+# YENİ: Sadece yorum
+# HP tag'leri artık UYGULANMAZ — sadece temizlenir
+# (hp_degisim JSON alanı tek kaynak — S02 fix)
+```
+
+**Neden `[ESYA:]` ve `[ALTIN:]` tag'lerine dokunulmadı:**
+- ESYA için JSON alanı sadece `yeni_esya` (tek eşya) varken tag ile birden fazla
+  eşya eklenebilir. Tag hala kullanılır.
+- ALTIN için `altin_degisim` zaten var ama ek kanal olarak tag da bırakıldı.
+  Bu iki kanaldan çift uygulama riski düşük (AI nadiren ikisini birden kullanır).
+
+### Dosya Değişiklikleri
+
+| Dosya | Durum | Değişiklik |
+|-------|-------|-----------|
+| `game_state.py` | [DEĞİŞTİ] | `_parse_hp_changes` — HP uygulama kaldırıldı |
+| `tests/test_game_state.py` | [DEĞİŞTİ] | +6 regresyon testi (TestHpDoubleApplication) |
+
+---
+
+## [Aşama 4.9] — S05: Dodge/Savunma Karışıklığı Düzeltmesi
+
+- **Tarih:** 2026-06-11
+- **Agent:** Antigravity (Opus 4.6)
+- **İlgili Sorunlar:** S05 (dodge/savunma bayrak karışıklığı)
+- **Plan Uyumu:** ✅ Plana tam uygun
+
+### Ne Yapıldı
+
+DEX dodge mekanizması ve savunma challenge'ı artık **farklı bayraklar** kullanıyor.
+Dodge olduğunda UI'da "DODGE!" gösterilir, "MUKEMMEL SAVUNMA!" değil.
+
+### Sorunun Anatomisi
+
+Eski durum:
+```
+Dodge olduğunda:  defense_blocked = True  →  "MUKEMMEL SAVUNMA!" ×
+Savunma başarılı: defense_blocked = True  →  "MUKEMMEL SAVUNMA!" ✓
+```
+
+Oyuncu saldırı seçti, savunma yapmadı ama DEX'i yüksek olduğu için
+dodge oldu. Animasyonda "MUKEMMEL SAVUNMA!" yazıyordu — yanlış.
+
+### Çözüm
+
+**1. Yeni bayrak: `dodged`**
+
+```python
+# CombatManager.__init__ / reset()
+self.dodged: bool = False
+```
+
+**2. `calculate_enemy_damage` — dodge'da artık `dodged=True`:**
+
+```diff
+-self.defense_blocked = True
++self.dodged = True  # S05 fix
+```
+
+**3. `resolve_enemy_attack_tick` — ayrı feedback:**
+
+```python
+if self.dodged:
+    feedback = "DEX DODGE! Dusman saldirisindan kactin!"
+elif self.defense_blocked:
+    feedback = "Mukemmel savunma! Dusman saldirisi engellendi!"
+```
+
+**4. `main.py` wrapper — visual kontrol:**
+
+```python
+is_blocked_visual = self.combat.defense_blocked or self.combat.dodged
+```
+
+### Dosya Değişiklikleri
+
+| Dosya | Durum | Değişiklik |
+|-------|-------|-----------|
+| `combat_manager.py` | [DEĞİŞTİ] | +`dodged` bayrağı, feedback ayrımı, reset |
+| `main.py` | [DEĞİŞTİ] | Wrapper'da `dodged \|\| defense_blocked` |
+| `tests/test_combat.py` | [DEĞİŞTİ] | +3 S05 testi, mevcut dodge testleri güncellendi |
+
+### Test Sonuçları
+
+```
+$ python -m pytest tests/ -v
+============================= 209 passed in 0.40s =============================
+```
+
 ## TEST SAYISI TARİHÇESİ
 
 | Tarih | Aşama | Toplam Test | Artış |
@@ -601,6 +1123,8 @@ Test artışı: 85 → 140 (+55 yeni prompt testi)
 | 2026-06-04 | Aşama 1 tamamlandı | 68 | 0 (test eklenmedi) |
 | 2026-06-04 | Aşama 2 tamamlandı | 85 | +17 |
 | 2026-06-06 | Aşama 3 tamamlandı | 140 | +55 |
+| 2026-06-11 | Aşama 4.7 (test_combat.py) | 200 | +60 |
+| 2026-06-11 | Aşama 4.8+4.9 (S02+S05 fix) | 209 | +9 |
 
 ---
 
@@ -613,8 +1137,9 @@ python_dnd/
 ├── game_data.py             [YENİ — Aşama 2.1]  Statik sözlükler
 ├── shop_system.py           [YENİ — Aşama 2.3]  ShopSystem sınıfı
 ├── prompt_builder.py        [YENİ — Aşama 3.1]  PromptBuilder sınıfı
+├── combat_manager.py        [YENİ — Aşama 4.1]  CombatManager sınıfı
 ├── game_state.py            [DEĞİŞTİ — Aşama 2,3] ~250 satır azaldı
-├── main.py                  [DEĞİŞTİ — Aşama 1] Bug düzeltmeleri
+├── main.py                  [DEĞİŞTİ — Aşama 1,4] Bug düzeltmeleri + savaş delegasyonu
 ├── ai_manager.py            [DEĞİŞTİ — Aşama 1] ast.literal_eval kaldırıldı
 ├── requirements.txt         [DEĞİŞTİ — Aşama 0] Üst sınır + pytest
 ├── RESTRUCTURE_PLAN.md      [DEĞİŞTİ] Checkbox'lar güncellendi
@@ -622,10 +1147,11 @@ python_dnd/
 └── tests/                   [YENİ — Aşama 0]
     ├── __init__.py
     ├── conftest.py           Paylaşılan fixture'lar
-    ├── test_game_state.py    35 test
+    ├── test_game_state.py    41 test (+6 S02 regresyon) [Aşama 4.8]
     ├── test_ai_parse.py      9 test
     ├── test_config.py        9 test
     ├── test_snapshots.py     10 test (characterization)
     ├── test_shop.py          17 test [Aşama 2.4]
-    └── test_prompts.py       55 test [Aşama 3.4]
+    ├── test_prompts.py       55 test [Aşama 3.4]
+    └── test_combat.py        63 test (+3 S05) [Aşama 4.7+4.9]
 ```

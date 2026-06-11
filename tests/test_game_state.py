@@ -365,3 +365,88 @@ class TestShopSystem:
         game_state.init_shop()
         result = game_state.shop_roll()
         assert result is False
+
+
+# ================================================================
+# S02: HP Çift Uygulama Regresyon Testleri
+# ================================================================
+
+class TestHpDoubleApplication:
+    """S02 fix: HP tag'leri artık uygulanmamalı, sadece temizlenmeli."""
+
+    def test_hp_tag_not_applied(self, game_state):
+        """[HP:-10] tag'i HP'yi düşürmemeli — sadece hp_degisim geçerli."""
+        initial_hp = game_state.character.hp
+        ai_response = {
+            "hikaye_metni": "Canavar saldirdi [HP:-10]",
+            "secenekler": {"sol_ust": "Saldır", "sag_ust": "Kaç", "sol_alt": "", "sag_alt": ""},
+            "mod": "kesfet",
+            "hp_degisim": 0,
+            "altin_degisim": 0,
+        }
+        game_state.update_from_ai_response(ai_response)
+        assert game_state.character.hp == initial_hp  # HP değişmemeli
+
+    def test_hp_tag_cleaned_from_story(self, game_state):
+        """[HP:-10] tag'i hikaye metninden temizlenmeli."""
+        ai_response = {
+            "hikaye_metni": "Canavar saldirdi [HP:-10] ama kurtuldun.",
+            "secenekler": {"sol_ust": "Devam", "sag_ust": "", "sol_alt": "", "sag_alt": ""},
+            "mod": "kesfet",
+            "hp_degisim": 0,
+            "altin_degisim": 0,
+        }
+        game_state.update_from_ai_response(ai_response)
+        assert "[HP:" not in game_state.current_story
+
+    def test_hp_degisim_still_works(self, game_state):
+        """hp_degisim JSON alanı hala çalışmalı."""
+        initial_hp = game_state.character.hp
+        ai_response = {
+            "hikaye_metni": "Bir tuzaga dusun.",
+            "secenekler": {"sol_ust": "Devam", "sag_ust": "", "sol_alt": "", "sag_alt": ""},
+            "mod": "kesfet",
+            "hp_degisim": -15,
+            "altin_degisim": 0,
+        }
+        game_state.update_from_ai_response(ai_response)
+        assert game_state.character.hp == initial_hp - 15
+
+    def test_no_double_hp_application(self, game_state):
+        """S02 ana test: hem hp_degisim hem HP tag'i varsa, sadece hp_degisim uygulanmalı."""
+        initial_hp = game_state.character.hp
+        ai_response = {
+            "hikaye_metni": "Canavar saldirdi [HP:-10]",
+            "secenekler": {"sol_ust": "Saldır", "sag_ust": "Kaç", "sol_alt": "", "sag_alt": ""},
+            "mod": "kesfet",
+            "hp_degisim": -10,
+            "altin_degisim": 0,
+        }
+        game_state.update_from_ai_response(ai_response)
+        # Eski davranış: HP 20 düşerdi (10+10). Yeni davranış: sadece 10 düşmeli.
+        assert game_state.character.hp == initial_hp - 10
+
+    def test_esya_tag_still_works(self, game_state):
+        """ESYA tag'leri hala çalışmalı (sadece HP kaldırıldı)."""
+        ai_response = {
+            "hikaye_metni": "Bir sandik buldun [ESYA:Buyulu Yuzuk]",
+            "secenekler": {"sol_ust": "Devam", "sag_ust": "", "sol_alt": "", "sag_alt": ""},
+            "mod": "kesfet",
+            "hp_degisim": 0,
+            "altin_degisim": 0,
+        }
+        game_state.update_from_ai_response(ai_response)
+        assert "Buyulu Yuzuk" in game_state.character.inventory
+
+    def test_altin_tag_still_works(self, game_state):
+        """ALTIN tag'leri hala çalışmalı (sadece HP kaldırıldı)."""
+        initial_gold = game_state.character.gold
+        ai_response = {
+            "hikaye_metni": "Hazine buldun [ALTIN:+20]",
+            "secenekler": {"sol_ust": "Devam", "sag_ust": "", "sol_alt": "", "sag_alt": ""},
+            "mod": "kesfet",
+            "hp_degisim": 0,
+            "altin_degisim": 0,
+        }
+        game_state.update_from_ai_response(ai_response)
+        assert game_state.character.gold == initial_gold + 20

@@ -113,7 +113,7 @@ Her sorun şu formatta belgelenmiştir:
 
 ---
 
-#### - [ ] S02: HP Çift Uygulanma Riski
+#### - [x] S02: HP Çift Uygulanma Riski
 
 - **Konum:** `game_state.py` satır 312-326 (`hp_degisim` işleme)
   ve satır 971-1007 (`_parse_hp_changes` metodu)
@@ -184,7 +184,7 @@ Her sorun şu formatta belgelenmiştir:
 
 ---
 
-#### - [ ] S05: `_defense_blocked` Dodge ile Savunma Karışıklığı
+#### - [x] S05: `_defense_blocked` Dodge ile Savunma Karışıklığı
 
 - **Konum:** `main.py` satır 674 (dodge'da True), satır 629 (savunmada True)
 - **Şu An Ne Oluyor:** DEX dodge mekanizması ve savunma challenge'ı
@@ -1014,15 +1014,15 @@ Düşman çıkıyor mu? Seçenekler geliyor mu?
 
 ### AŞAMA 4: Savaş Yöneticisi (Yüksek Risk — En Dikkatli Aşama)
 
-- [ ] 4.1 — `combat_manager.py` oluştur, boş sınıf (S07) — Risk: Sıfır
-- [ ] 4.2 — Savaş bayraklarını taşı (`_selected_weapon`, `_defense_*`, vs.) (S07) — Risk: Orta
-- [ ] 4.3 — `_process_attack`, `_process_defense`, `_process_flee` taşı (S07) — Risk: Orta
-- [ ] 4.4 — `_process_player_combat_result` taşı (S07) — Risk: Yüksek
-- [ ] 4.5 — `_start_enemy_attack`, `_handle_enemy_attack` taşı (S07) — Risk: Yüksek
-- [ ] 4.6 — `_start_combat_challenge`, `_start_actual_challenge` taşı (S07) — Risk: Orta
-- [ ] 4.7 — `test_combat.py` yaz (S16) — Risk: Sıfır
-- [ ] 4.8 — S02 (HP çift uygulama) düzelt (S02) — Risk: Orta
-- [ ] 4.9 — S05 (dodge/savunma karışıklığı) düzelt (S05) — Risk: Orta
+- [x] 4.1 — `combat_manager.py` oluştur, boş sınıf (S07) — Risk: Sıfır
+- [x] 4.2 — Savaş bayraklarını taşı (`_selected_weapon`, `_defense_*`, vs.) (S07) — Risk: Orta
+- [x] 4.3 — `_process_attack`, `_process_defense`, `_process_flee` taşı (S07) — Risk: Orta
+- [x] 4.4 — `_process_player_combat_result` taşı (S07) — Risk: Yüksek
+- [x] 4.5 — `_start_enemy_attack`, `_handle_enemy_attack` taşı (S07) — Risk: Yüksek
+- [x] 4.6 — `_start_combat_challenge`, `_start_actual_challenge` taşı (S07) — Risk: Orta
+- [x] 4.7 — `test_combat.py` yaz (S16) — Risk: Sıfır
+- [x] 4.8 — S02 (HP çift uygulama) düzelt (S02) — Risk: Orta
+- [x] 4.9 — S05 (dodge/savunma karışıklığı) düzelt (S05) — Risk: Orta
 
 **DOĞRULAMA:** Tam savaş döngüsü:
 Saldır → challenge → hasar → düşman saldırısı → savunma →
