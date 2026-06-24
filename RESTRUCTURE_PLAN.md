@@ -377,7 +377,7 @@ Her sorun şu formatta belgelenmiştir:
 
 ---
 
-#### - [ ] S12: `reset()` Metodu `__init__` Çağırıyor
+#### - [x] S12: `reset()` Metodu `__init__` Çağırıyor
 
 - **Konum:** `game_state.py` satır 834
 - **Şu An Ne Oluyor:** `self.__init__(Character())` — Python'da
@@ -1032,10 +1032,10 @@ düşman yenilgisi → envanter. Her adımda HP doğru mu?
 
 ### AŞAMA 5: Envanter ve Temizlik (Orta Risk)
 
-- [ ] 5.1 — `inventory_handler.py` oluştur, envanter mantığını taşı (S07) — Risk: Orta
-- [ ] 5.2 — `game_state.py` — `reset()` metodunu düzelt (S12) — Risk: Orta
-- [ ] 5.3 — Faz geçişlerini Enum'a çevir (S09) — Risk: Orta
-- [ ] 5.4 — Çift `draw_inventory` çağrısını optimize et (Performans) — Risk: Düşük
+- [x] 5.1 — `inventory_handler.py` oluştur, envanter mantığını taşı (S07) — Risk: Orta
+- [x] 5.2 — `game_state.py` — `reset()` metodunu düzelt (S12) — Risk: Orta
+- [x] 5.3 — Faz geçişlerini Enum'a çevir (S09) — Risk: Orta
+- [x] 5.4 — Çift `draw_inventory` çağrısını optimize et (Performans) — Risk: Düşük
 
 ---
 

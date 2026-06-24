@@ -1114,6 +1114,107 @@ is_blocked_visual = self.combat.defense_blocked or self.combat.dodged
 $ python -m pytest tests/ -v
 ============================= 209 passed in 0.40s =============================
 ```
+---
+
+## [Aşama 5.1] — InventoryHandler Oluşturma
+
+- **Tarih:** 2026-06-18
+- **Agent:** Antigravity (Opus 4.6)
+- **İlgili Sorunlar:** S07 (God Object parçalama)
+- **Plan Uyumu:** ✅ Plana tam uygun
+
+### Ne Yapıldı
+
+`main.py`'deki ~195 satırlık `_handle_inventory()` metodundaki hit-test, dwell
+zamanlama ve aksiyon karar mantığı `InventoryHandler` sınıfına taşındı.
+
+### Çözüm Mimarisi
+
+**InventoryHandler (saf hesaplama motoru):**
+- `hit_test(finger_pos, regions)` → parmak hangi bölgede
+- `update_dwell(now, regions)` → dwell zamanlayıcısı
+- `consume_action()` → tetiklenen aksiyon dict'i döndürür
+
+**main.py wrapper (ince çerçeve):**
+- UI çağrıları (`draw_inventory`, `draw_finger_cursor`, `cv2.imshow`)
+- Side-effect'ler (`state.toggle_equipped`, `state.shop_buy`, faz geçişi)
+
+### Kaldırılan Bayraklar (main.py)
+
+10 ayrı `self._inv_*` bayrağı yerine tek `self.inventory = InventoryHandler()`:
+- `_inventory_page`, `_inv_hovered_idx`, `_inv_hovered_devam`
+- `_inv_hovered_shop`, `_inv_hovered_roll`, `_inv_hovered_prev`
+- `_inv_hovered_next`, `_inv_dwell_start`, `_inv_dwell_target`
+
+### Dosya Değişiklikleri
+
+| Dosya | Durum | Değişiklik |
+|-------|-------|-----------|
+| `inventory_handler.py` | [YENİ] | ~230 satır, InventoryHandler sınıfı |
+| `main.py` | [DEĞİŞTİ] | 195 satır inline → ~80 satır wrapper |
+| `tests/test_inventory.py` | [YENİ] | 23 test |
+
+---
+
+## [Aşama 5.2] — S12: reset() Anti-Pattern Düzeltmesi
+
+- **Tarih:** 2026-06-18
+- **Agent:** Antigravity (Opus 4.6)
+- **İlgili Sorunlar:** S12 (reset() __init__ çağırma anti-pattern'i)
+- **Plan Uyumu:** ✅ Plana tam uygun
+
+### Ne Yapıldı
+
+`GameState.reset()` artık `self.__init__(Character())` çağırmıyor.
+Yerine `_reset_to_defaults()` yardımcı metodu kullanılıyor.
+
+### Sorunun Anatomisi
+
+Eski durum:
+```python
+def reset(self) -> None:
+    self.__init__(Character())  # ← Anti-pattern!
+```
+
+**Riskler:**
+- `__init__`'e yeni parametre eklenirse `reset()` sessizce kırılır
+- `__init__` içinde başka __init__ çağrıları (ShopSystem vs.) gereksiz yeniden çalışır
+- Python MRO ile sorun çıkma potansiyeli
+
+### Çözüm
+
+```python
+def __init__(self, character=None):
+    self.character = character or Character()
+    self._reset_to_defaults()  # ← Ortak yardımcı
+
+def _reset_to_defaults(self) -> None:
+    """Tüm alanları varsayılana döndürür (character hariç)."""
+    self.current_location = "Bilinmeyen Diyar"
+    self.turn_count = 0
+    # ... 30+ attribute ...
+
+def reset(self) -> None:
+    self.character = Character()
+    self._reset_to_defaults()  # ← Aynı yardımcı
+```
+
+Ek olarak `_api_error` attribute'u (runtime'da main.py'de set edilen) artık
+`_reset_to_defaults`'ta resmi olarak tanımlandı.
+
+### Dosya Değişiklikleri
+
+| Dosya | Durum | Değişiklik |
+|-------|-------|-----------|
+| `game_state.py` | [DEĞİŞTİ] | `_reset_to_defaults()` eklendi, eski reset kaldırıldı |
+| `tests/test_game_state.py` | [DEĞİŞTİ] | +5 S12 regresyon testi |
+
+### Test Sonuçları
+
+```
+$ python -m pytest tests/ -v
+============================= 237 passed in 0.39s =============================
+```
 
 ## TEST SAYISI TARİHÇESİ
 
@@ -1125,6 +1226,7 @@ $ python -m pytest tests/ -v
 | 2026-06-06 | Aşama 3 tamamlandı | 140 | +55 |
 | 2026-06-11 | Aşama 4.7 (test_combat.py) | 200 | +60 |
 | 2026-06-11 | Aşama 4.8+4.9 (S02+S05 fix) | 209 | +9 |
+| 2026-06-18 | Aşama 5.1+5.2 (inventory+reset) | 237 | +28 |
 
 ---
 
@@ -1137,9 +1239,11 @@ python_dnd/
 ├── game_data.py             [YENİ — Aşama 2.1]  Statik sözlükler
 ├── shop_system.py           [YENİ — Aşama 2.3]  ShopSystem sınıfı
 ├── prompt_builder.py        [YENİ — Aşama 3.1]  PromptBuilder sınıfı
+├── inventory_handler.py     [YENİ — Aşama 5.1]  InventoryHandler sınıfı (5.4 cache)
 ├── combat_manager.py        [YENİ — Aşama 4.1]  CombatManager sınıfı
-├── game_state.py            [DEĞİŞTİ — Aşama 2,3] ~250 satır azaldı
-├── main.py                  [DEĞİŞTİ — Aşama 1,4] Bug düzeltmeleri + savaş delegasyonu
+├── game_phase.py            [YENİ — Aşama 5.3]  GamePhase enum
+├── game_state.py            [DEĞİŞTİ — Aşama 2,3,5.2] reset() düzeltmesi
+├── main.py                  [DEĞİŞTİ — Aşama 1,4,5.1,5.3,5.4] Enum + optimizasyon
 ├── ai_manager.py            [DEĞİŞTİ — Aşama 1] ast.literal_eval kaldırıldı
 ├── requirements.txt         [DEĞİŞTİ — Aşama 0] Üst sınır + pytest
 ├── RESTRUCTURE_PLAN.md      [DEĞİŞTİ] Checkbox'lar güncellendi
@@ -1147,11 +1251,128 @@ python_dnd/
 └── tests/                   [YENİ — Aşama 0]
     ├── __init__.py
     ├── conftest.py           Paylaşılan fixture'lar
-    ├── test_game_state.py    41 test (+6 S02 regresyon) [Aşama 4.8]
+    ├── test_game_state.py    46 test (+5 S12 regresyon) [Aşama 5.2]
     ├── test_ai_parse.py      9 test
     ├── test_config.py        9 test
     ├── test_snapshots.py     10 test (characterization)
     ├── test_shop.py          17 test [Aşama 2.4]
     ├── test_prompts.py       55 test [Aşama 3.4]
-    └── test_combat.py        63 test (+3 S05) [Aşama 4.7+4.9]
+    ├── test_combat.py        63 test (+3 S05) [Aşama 4.7+4.9]
+    └── test_inventory.py     23 test [Aşama 5.1]
 ```
+
+---
+
+## [Aşama 5.3] — Faz Geçişlerini Enum'a Çevir (S09)
+
+- **Tarih:** 2026-06-24
+- **Agent:** Antigravity (Claude Opus 4.6 Thinking)
+- **İlgili Sorunlar:** S09 (State Machine Yok — Spaghetti Faz Yönetimi)
+- **Plan Uyumu:** ✅ Plana tam uygun
+
+### Ne Yapıldı
+
+`main.py`'deki 7 string faz sabiti (`PHASE_NORMAL = "normal"` vb.) yeni `GamePhase`
+Enum sınıfına dönüştürüldü. Enum sınıfı ayrı bir `game_phase.py` dosyasında
+tanımlandı — circular import riski sıfır.
+
+**Kapsam:**
+- 7 string sabit kaldırıldı (sınıf seviyesinden)
+- 29 kullanım noktası `GamePhase.XXX` formatına güncellendi
+- Karşılaştırmalar (`==`) Enum ile sorunsuz çalışır
+
+**Neden ayrı dosya?** İleride `CombatManager` veya `InventoryHandler` gibi
+modüller faz bilgisi döndürmek isteyebilir. Ayrı dosya:
+- Circular import riskini ortadan kaldırır
+- Tüm fazları tek yerden import edilebilir yapar
+- S09'un ilk adımı (Enum) tamamlanır, ikinci adım (Full State Pattern) ileride yapılabilir
+
+### Dosya Değişiklikleri
+
+| Dosya | Durum | Değişiklik |
+|-------|-------|-----------|
+| `game_phase.py` | [YENİ] | ~35 satır — `GamePhase` Enum sınıfı, 7 faz değeri |
+| `main.py` | [DEĞİŞTİ] | Import eklendi, 7 string sabit kaldırıldı, 29 referans güncellendi |
+
+### Teknik Kararlar
+
+**Enum value'ları string olarak korundu:** `GamePhase.NORMAL.value == "normal"`.
+Bu sayede debug log'larda faz isimleri okunabilir kalır. İleride gerekirse
+`print(f"Faz: {self.current_phase.value}")` ile okunabilir çıktı alınır.
+
+**Geriye uyumluluk sabitleri korundu:** `ENEMY_ATTACK_DURATION`,
+`CRITICAL_HIT_THRESHOLD` gibi savaş sabitleri (CombatManager referansları)
+değişmedi — bunlar faz sabiti değil.
+
+### Test Sonuçları
+
+```
+$ python -m pytest tests/ -v
+============================= 237 passed in 0.82s =============================
+```
+
+Testler `PHASE_*` sabitlerini doğrudan referans almıyor, bu yüzden sıfır etki.
+
+---
+
+## [Aşama 5.4] — Çift `draw_inventory` Çağrısını Optimize Et
+
+- **Tarih:** 2026-06-24
+- **Agent:** Antigravity (Claude Opus 4.6 Thinking)
+- **İlgili Sorunlar:** Performans optimizasyonu (yeni)
+- **Plan Uyumu:** ✅ Plana tam uygun
+
+### Ne Yapıldı
+
+`_handle_inventory()` metodundaki çift `draw_inventory()` çağrısı tek çağrıya
+indirildi. Bu, envanter ekranında her frame'de yapılan ağır bir çizim
+fonksiyonunun gereksiz tekrarını ortadan kaldırır.
+
+**Önceki akış (2 çağrı):**
+1. `draw_inventory(...)` → `frame_preview, regions` — sadece regions almak için
+2. `hit_test(finger, regions)` + `update_dwell()` + `consume_action()`
+3. `draw_inventory(...)` → `frame, _` — güncel hover ile gerçek çizim
+
+**Yeni akış (1 çağrı):**
+1. `get_cached_regions()` — önceki frame'in regions'ı
+2. `hit_test(finger, cached_regions)` + `update_dwell()` + `consume_action()`
+3. `draw_inventory(...)` → `frame, regions` — TEK çizim çağrısı
+4. `cache_regions(regions)` — sonraki frame için kaydet
+
+**Neden güvenli?** Regions koordinatları (buton pozisyonları, item satırları)
+frame'den frame'e değişmez — envanter boyutu sabit. Sayfa değişikliğinde
+bir sonraki frame'de yeni regions otomatik güncellenir. 1 frame gecikme
+60fps'de ~16ms olup kullanıcı tarafından algılanmaz.
+
+### Dosya Değişiklikleri
+
+| Dosya | Durum | Değişiklik |
+|-------|-------|-----------|
+| `inventory_handler.py` | [DEĞİŞTİ] | `_last_regions` cache, `cache_regions()` ve `get_cached_regions()` eklendi |
+| `main.py` | [DEĞİŞTİ] | `_handle_inventory()` — çift çağrı → tek çağrı, ~21 satır azaldı |
+
+### Teknik Kararlar
+
+**Cache `InventoryHandler`'da tutulur:** `main.py`'ye ek attribute eklemek yerine,
+regions cache'i `InventoryHandler.reset()` ile birlikte sıfırlanan bir iç attribute
+olarak tasarlandı. Bu, envanter açılıp kapandığında temiz başlangıç garanti eder.
+
+**İlk frame'de boş regions:** Envanter ilk açıldığında cache boş olur —
+`get_cached_regions()` boş dict döner. İlk frame'de hit-test sonuç vermez,
+ama ikinci frame'de (~16ms sonra) cache dolar ve normal çalışır.
+Bu, pratik olarak fark edilemez.
+
+### Dikkat Edilecekler
+
+- `InventoryHandler.reset()` artık `_last_regions`'ı da sıfırlar
+- `cache_regions()` ve `get_cached_regions()` yeni public metodlardır
+- `main.py`'deki `INV_DWELL_TIME` ve `INV_DEVAM_DWELL` sabitleri hala orada
+  (kullanılmıyor, InventoryHandler'daki sabitler geçerli) — temizlik ileride yapılabilir
+
+### Test Sonuçları
+
+```
+$ python -m pytest tests/ -v
+============================= 237 passed in 0.82s =============================
+```
+

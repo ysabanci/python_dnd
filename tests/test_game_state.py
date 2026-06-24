@@ -450,3 +450,98 @@ class TestHpDoubleApplication:
         }
         game_state.update_from_ai_response(ai_response)
         assert game_state.character.gold == initial_gold + 20
+
+
+# ================================================================
+# S12: reset() Regresyon Testleri
+# ================================================================
+
+class TestResetMethod:
+    """S12 fix: reset() __init__ çağırmak yerine _reset_to_defaults kullanmalı."""
+
+    def test_reset_produces_same_attributes(self, game_state):
+        """reset() ile __init__ aynı attribute setini üretmeli."""
+        fresh = GameState()
+        fresh_attrs = set(vars(fresh).keys())
+
+        # game_state'i kirlet
+        game_state.turn_count = 999
+        game_state.is_game_over = True
+        game_state.current_mode = "savas"
+        game_state.enemy_hp = 50
+
+        game_state.reset()
+        reset_attrs = set(vars(game_state).keys())
+
+        # Attribute isimleri aynı olmalı
+        assert fresh_attrs == reset_attrs, \
+            f"Eksik: {fresh_attrs - reset_attrs}, Fazla: {reset_attrs - fresh_attrs}"
+
+    def test_reset_clears_game_state(self, game_state):
+        """reset() tüm oyun durumunu sıfırlamalı."""
+        game_state.turn_count = 50
+        game_state.is_game_over = True
+        game_state.game_over_reason = "Oldu"
+        game_state.current_mode = "savas"
+        game_state.enemy_hp = 75
+        game_state.current_story = "Eski hikaye"
+        game_state.equipped_items = ["Kilic"]
+        game_state.visited_locations = ["Orman"]
+        game_state.npc_met = ["Gandalf"]
+        game_state._api_error = True
+
+        game_state.reset()
+
+        assert game_state.turn_count == 0
+        assert game_state.is_game_over is False
+        assert game_state.game_over_reason == ""
+        assert game_state.current_mode == "kesif"
+        assert game_state.enemy_hp == 0
+        assert game_state.equipped_items == []
+        assert game_state.visited_locations == []
+        assert game_state.npc_met == []
+        assert game_state._api_error is False
+
+    def test_reset_creates_fresh_character(self, game_state):
+        """reset() yeni Character oluşturmalı."""
+        game_state.character.hp = 1
+        game_state.character.gold = 999
+        game_state.character.name = "OldName"
+
+        game_state.reset()
+
+        assert game_state.character.hp == 100  # Varsayılan
+        assert game_state.character.gold == 50  # Varsayılan
+        assert game_state.character.name == "Kahraman"
+
+    def test_reset_reinitializes_system_prompt(self, game_state):
+        """reset() sonrası mesaj geçmişinde sistem prompt'u olmalı."""
+        game_state.reset()
+        history = game_state.get_message_history()
+        assert len(history) >= 1
+        assert history[0]["role"] == "system"
+
+    def test_reset_does_not_call_init_directly(self):
+        """reset() kodunda __init__ çağrısı olmamalı."""
+        import inspect
+        source = inspect.getsource(GameState.reset)
+        # Docstring'i çıkar — sadece fonksiyon gövdesini kontrol et
+        lines = source.split('\n')
+        code_lines = []
+        in_docstring = False
+        for line in lines:
+            stripped = line.strip()
+            if stripped.startswith('"""') or stripped.startswith("'''"):
+                if in_docstring:
+                    in_docstring = False
+                    continue
+                elif stripped.count('"""') == 2 or stripped.count("'''") == 2:
+                    continue  # tek satırlık docstring
+                else:
+                    in_docstring = True
+                    continue
+            if not in_docstring:
+                code_lines.append(line)
+        code_body = '\n'.join(code_lines)
+        assert "__init__" not in code_body, \
+            "reset() gövdesinde __init__ çağrısı var! _reset_to_defaults kullanılmalı."

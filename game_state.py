@@ -87,6 +87,16 @@ class GameState:
             character: Oyuncu karakteri. Verilmezse varsayılan karakter oluşturulur.
         """
         self.character = character or Character()
+        self._reset_to_defaults()
+
+    def _reset_to_defaults(self) -> None:
+        """
+        Tüm oyun durumu alanlarını varsayılan değerlerine sıfırlar.
+        __init__ ve reset() tarafından ortaklaşa kullanılır.
+
+        NOT: self.character bu metod tarafından DEĞİŞTİRİLMEZ.
+        reset() character'ı ayrıca sıfırlar.
+        """
         self.current_location: str = "Bilinmeyen Diyar"
         self.turn_count: int = 0
 
@@ -111,6 +121,7 @@ class GameState:
         self.startup_step: int = 0  # 0=class, 1=weapon, 2=destination
         self.current_theme: str = ""
         self.current_feedback: str = ""
+        self._api_error: bool = False  # main.py tarafından set edilen AI hata bayrağı
 
         # ----- AI Tarafından Yönetilen Mod -----
         self.current_mode: str = "kesif"  # "kesif" | "savas" | "diyalog"
@@ -148,6 +159,16 @@ class GameState:
         # ----- AI Mesaj Geçmişi (Memory) -----
         self._message_history: List[Dict[str, str]] = []
         self._init_system_prompt()
+
+    def reset(self) -> None:
+        """
+        Oyunu tamamen sıfırlar ve baştan başlatır.
+
+        S12 fix: Artık self.__init__() çağırmak yerine character'ı
+        sıfırlayıp _reset_to_defaults() kullanır.
+        """
+        self.character = Character()
+        self._reset_to_defaults()
 
     # ------------------------------------------------------------------ #
     #  GENEL (PUBLIC) METODLAR                                            #
@@ -683,10 +704,6 @@ class GameState:
             amount: Değişim miktarı.
         """
         self.character.gold = max(0, self.character.gold + amount)
-
-    def reset(self) -> None:
-        """Oyunu tamamen sıfırlar ve baştan başlatır."""
-        self.__init__(Character())
 
     # ------------------------------------------------------------------ #
     #  ÖZEL (PRIVATE) METODLAR                                            #
