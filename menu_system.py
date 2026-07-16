@@ -24,20 +24,16 @@ def sanitize(text: str) -> str:
 
 
 def get_clipboard() -> str:
-    """Windows clipboard icerigini guvenli sekilde dondurur."""
-    # PowerShell ile clipboard oku (pygame ile catismaz)
+    """Pano icerigini dondurur.
+
+    pyperclip cross-platform calisir ve PowerShell subprocess'inin aksine
+    guvenlik yazilimlarini (Kaspersky vb.) tetiklemez (S15/S22 fix — Asama 6.2).
+    """
     try:
-        import subprocess
-        result = subprocess.run(
-            ["powershell", "-Command", "Get-Clipboard"],
-            capture_output=True, text=True, timeout=3,
-            creationflags=0x08000000  # CREATE_NO_WINDOW
-        )
-        if result.returncode == 0:
-            return result.stdout.strip()
+        import pyperclip
+        return (pyperclip.paste() or "").strip()
     except Exception:
-        pass
-    return ""
+        return ""
 
 
 class MenuSystem:
