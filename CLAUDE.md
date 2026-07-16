@@ -25,6 +25,7 @@ God Object'ler (`main.py` 1304 satır, `game_state.py` 1020 satır) parçalanıy
 
 | Belge | Yol | Ne İçin |
 |-------|-----|---------|
+| **PRODUCT_VISION.md** | `e:\Projeler\python_dnd\PRODUCT_VISION.md` | Ürün vizyonu ve yön. Eleştirel durum tespiti (E01-E06), vizyon merdiveni (V1-V4), pazar notları (P01-P06), ajan kuralları (G01-G06). **Görev almadan önce oku.** |
 | **RESTRUCTURE_PLAN.md** | `e:\Projeler\python_dnd\RESTRUCTURE_PLAN.md` | Ana yol haritası. Sorun kataloğu (S01-S22), bağımlılık haritası, aşamalar. |
 | **CHANGELOG.md** | `e:\Projeler\python_dnd\CHANGELOG.md` | Yapılan her değişikliğin teknik detayı. Şablon dahil. |
 | **TESTS_GUIDE.md** | `e:\Projeler\python_dnd\tests\TESTS_GUIDE.md` | Test yazma kuralları ve örnekler. |
