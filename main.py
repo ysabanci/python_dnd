@@ -40,17 +40,6 @@ class DnDGame:
     SHAPE_TYPES = [ShapeType.TRIANGLE, ShapeType.SQUARE, ShapeType.CIRCLE,
                    ShapeType.RECTANGLE, ShapeType.INFINITY]
 
-    # Dusman saldiri suresi artik CombatManager'da
-    ENEMY_ATTACK_DURATION = CombatManager.ENEMY_ATTACK_DURATION
-
-    # Savaş sabitleri artık CombatManager'da — geriye uyumluluk için referanslar
-    CRITICAL_HIT_THRESHOLD = CombatManager.CRITICAL_HIT_THRESHOLD
-    EXTRA_TURN_CHANCE = CombatManager.EXTRA_TURN_CHANCE
-    ACTION_ATTACK = CombatManager.ACTION_ATTACK
-    ACTION_DEFENSE = CombatManager.ACTION_DEFENSE
-    ACTION_FLEE = CombatManager.ACTION_FLEE
-    ACTION_MAGIC = CombatManager.ACTION_MAGIC
-
     def __init__(self, config: dict = None):
         self._config = config or load_config()
 
@@ -501,57 +490,6 @@ class DnDGame:
             self.shape_challenge.reset()
             self.fist_challenge.reset()
 
-    def _process_attack(self, accuracy: float, action: str,
-                        is_shape: bool, stat_fx: dict = None) -> None:
-        """
-        Saldiri/Buyu sonucunu isler. CombatManager'a delege eder.
-        """
-        if stat_fx is None:
-            stat_fx = self.state.get_stat_effect_on_combat()
-
-        result = self.combat.process_attack(
-            accuracy=accuracy,
-            action=action,
-            is_shape=is_shape,
-            selected_weapon=self.combat.selected_weapon,
-            weapon_stats=self.state.get_weapon_stats(self.combat.selected_weapon),
-            class_bonus=self.state.get_class_bonus(),
-            stat_fx=stat_fx,
-            enemy_hp=self.state.enemy_hp,
-        )
-
-        # Sonuçları state'e uygula
-        self.state.enemy_hp = result["new_enemy_hp"]
-        self.state.current_feedback = result["description"]
-        self.state.current_story = result["description"]
-
-    def _process_defense(self, accuracy: float) -> None:
-        """
-        Savunma sonucunu isler. CombatManager'a delege eder.
-        CombatManager defense_blocked/defense_partial bayraklarını günceller.
-        """
-        result = self.combat.process_defense(accuracy)
-
-        # Sonuçları state'e uygula
-        if result["heal"] > 0:
-            self.state.modify_hp(result["heal"])
-        self.state.current_feedback = result["description"]
-        self.state.current_story = result["description"]
-
-    def _process_flee(self, accuracy: float, stat_fx: dict = None) -> None:
-        """
-        Kacis sonucunu isler. CombatManager'a delege eder.
-        """
-        if stat_fx is None:
-            stat_fx = self.state.get_stat_effect_on_combat()
-
-        result = self.combat.process_flee(
-            accuracy=accuracy,
-            class_bonus=self.state.get_class_bonus(),
-            stat_fx=stat_fx,
-        )
-        self.state.current_feedback = result["description"]
-
     # ------------------------------------------------------------------ #
     #  DUSMAN SALDIRI FAZI                                                #
     # ------------------------------------------------------------------ #
@@ -813,9 +751,6 @@ class DnDGame:
 
             self.dice_challenge.reset()
             self.current_phase = GamePhase.NORMAL
-
-    INV_DWELL_TIME = 1.2  # Envanter item secimi suresi (saniye)
-    INV_DEVAM_DWELL = 1.5  # Devam butonu secim suresi
 
     def _handle_inventory(self, frame: np.ndarray) -> None:
         """Envanter ekranini yonetir — InventoryHandler'a delege eder.

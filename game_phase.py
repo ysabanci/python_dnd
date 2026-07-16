@@ -33,5 +33,3 @@ class GamePhase(Enum):
     WEAPON_SELECT = "weapon_select"
     DICE_ROLL = "dice_roll"
     INVENTORY = "inventory"
-"""
-<parameter name="Description">New GamePhase Enum module replacing string phase constants. This provides type safety for phase transitions and makes invalid phase assignments impossible.
