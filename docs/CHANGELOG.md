@@ -1376,3 +1376,198 @@ $ python -m pytest tests/ -v
 ============================= 237 passed in 0.82s =============================
 ```
 
+
+---
+
+## [Denetim + Hotfix] — game_phase.py SyntaxError ve Ölü Kod Temizliği
+
+- **Tarih:** 2026-07-16
+- **Agent:** Claude (Fable 5)
+- **İlgili Sorunlar:** S09 (Aşama 5.3 artığı), S07 (ölü kod)
+- **Plan Uyumu:** ⚠️ Planda olmayan acil düzeltme (denetimde bulundu)
+
+### Ne Yapıldı
+
+Önceki ajan işlerinin tam denetimi yapıldı. **Kritik bulgu:** `game_phase.py`
+dosyasının sonunda Aşama 5.3'ü yapan ajanın araç çağrısından kalma çöp metin
+(`<parameter name="Description">...`) ve kapanmamış `"""` bloğu vardı.
+Bu bir SyntaxError'dı — **oyun 24 Haziran'daki Aşama 5 commit'inden beri hiç
+açılamıyordu** (`python main.py` import aşamasında çöküyordu). 237 test yeşil
+kaldı çünkü hiçbir test `game_phase` veya `main` modülünü import etmiyor.
+Bu olay, PRODUCT_VISION.md'deki E01 eleştirisinin (test güvenlik yanılsaması)
+somut kanıtıdır.
+
+Ayrıca hiçbir yerden çağrılmayan ölü kod kaldırıldı:
+- `main.py`: `_process_attack`, `_process_defense`, `_process_flee`
+  wrapper'ları (Aşama 4.4'te `evaluate_combat_result` bunların yerini
+  almıştı ama wrapper'lar silinmemişti)
+- `main.py`: geriye-uyumluluk sabit alias'ları (`CRITICAL_HIT_THRESHOLD` vb.)
+- `main.py`: `INV_DWELL_TIME`, `INV_DEVAM_DWELL` (InventoryHandler'a taşınmıştı)
+
+### Dikkat Edilecekler (gelecek ajanlar için denetim notları)
+
+- **Her görev sonrası test YETMEZ** — `python -c "import main"` smoke
+  import da zorunlu. Testler saf mantığı korur, oyunun açıldığını kanıtlamaz.
+- `game_state.py`'de yarım kalmış özellik: `get_effective_max_hp`,
+  `get_hp_bonus_from_equipment`, `get_stat_breakdown` hiçbir yerden
+  çağrılmıyor. Zırh eşyaları HP bonusu üretiyor ama bonus HİÇ uygulanmıyor
+  (`modify_hp` base max_hp'ye clamp'liyor). Bilinçli karar verilmeli:
+  ya özellik tamamlanmalı ya metodlar silinmeli.
+- `GameState._api_error` bayrağı yazılıyor ama hiçbir yerde okunmuyor
+  (UI kullanmıyor) — yarım kalmış hata gösterimi.
+
+### Test Sonuçları
+
+```
+$ python -m pytest tests/ -q
+237 passed
+$ python -c "import game_phase, main"
+SMOKE OK
+```
+
+---
+
+## [Aşama 6.1 + 6.2 + 6.4] — API Key .env'e Taşındı, Clipboard pyperclip Oldu
+
+- **Tarih:** 2026-07-16
+- **Agent:** Claude (Fable 5)
+- **İlgili Sorunlar:** S13 (API key düz metin), S15 (clipboard platform bağımlı), S18 (bağımlılıklar)
+- **Plan Uyumu:** ✅ Plana uygun
+
+### Ne Yapıldı
+
+**6.1 (S13):** API anahtarı artık `game_config.json`'da değil `.env`
+dosyasında tutuluyor. Okuma önceliği: `.env` dosyası > OS ortam değişkeni
+(`API_KEY`). Eski JSON'da key bulunursa ilk `load_config()` çağrısında
+otomatik olarak `.env`'e taşınır ve JSON'dan silinir (migration).
+`save_config()` key'i `.env`'e, diğer alanları JSON'a yazar; `_action`
+gibi çalışma zamanı alanları diske yazılmaz. `.env` zaten `.gitignore`'da.
+`ai_manager.py`'deki `os.environ.get("API_KEY")` fallback'i ile aynı
+değişken adı kullanıldı — uyumlu.
+
+**6.2 (S15/S22):** `menu_system.get_clipboard()` PowerShell subprocess
+yerine `pyperclip` kullanıyor. Cross-platform ve güvenlik yazılımlarını
+tetiklemiyor.
+
+**6.4 (S18):** `requirements.txt`'e `python-dotenv>=1.0.0,<2.0` ve
+`pyperclip>=1.8.0,<2.0` eklendi.
+
+### Dosya Değişiklikleri
+
+| Dosya | Durum | Değişiklik |
+|-------|-------|-----------|
+| `config_manager.py` | [DEĞİŞTİ] | .env okuma/yazma + migration |
+| `menu_system.py` | [DEĞİŞTİ] | `get_clipboard()` → pyperclip |
+| `requirements.txt` | [DEĞİŞTİ] | 2 yeni bağımlılık |
+| `tests/test_config.py` | [DEĞİŞTİ] | `isolated_config` fixture + 5 yeni test |
+
+### Dikkat Edilecekler
+
+- Testler artık `CONFIG_FILE` VE `ENV_FILE`'ı birlikte monkeypatch etmeli
+  (`isolated_config` fixture'ını kullanın) — yoksa gerçek `.env`'e yazarlar.
+- Menüden girilen key `save_config()` ile `.env`'e gider; JSON'da key kalmaz.
+
+### Test Sonuçları
+
+```
+$ python -m pytest tests/ -q
+242 passed
+```
+
+---
+
+## [Aşama 6.3] — Kamera Paylaşımı: Menü ↔ Oyun Tek VideoCapture
+
+- **Tarih:** 2026-07-16
+- **Agent:** Claude (Fable 5)
+- **İlgili Sorunlar:** S22 (Kaspersky çakışması)
+- **Plan Uyumu:** ✅ Plana uygun (RESTRUCTURE_PLAN'daki öneri: "main()'de tek kamera açılır, her ikisine geçirilir")
+
+### Ne Yapıldı
+
+Yeni `camera_manager.py` modülü eklendi. `CameraManager` uygulama ömrü
+boyunca tek `VideoCapture` yönetir: aynı index istendiğinde yeniden açmaz,
+sadece index değişince eski kamerayı kapatıp yenisini açar.
+
+- `main()`: tek `CameraManager` oluşturur, menü ve oyuna geçirir,
+  çıkışta `finally` ile kapatır.
+- `HandTracker.__init__`: yeni `capture` parametresi. Paylaşılan kamera
+  verilirse açmaz; `_owns_camera=False` olur ve `release()` kamerayı
+  KAPATMAZ (sadece MediaPipe landmarker kapanır).
+- `MenuSystem.__init__`: yeni `camera_manager` parametresi. Menü çıkışında
+  paylaşılan kamera açık kalır; kamera testi aynı index'te yeniden açmadan
+  yapılır.
+- Parametresiz eski davranış korundu (geriye uyumluluk).
+
+### Dikkat Edilecekler
+
+- **Manuel test gerekli:** Menü → oyun → menü döngüsünde Kaspersky'nin
+  tek seferden fazla izin bildirimi göstermediği kamerayla doğrulanmalı.
+- Ayarlardan kamera index'i değiştirilirse `CameraManager.get(yeni_index)`
+  eski kamerayı kapatıp yenisini açar — bu durumda bir bildirim normaldir.
+
+### Test Sonuçları
+
+```
+$ python -m pytest tests/ -q
+242 passed  (CameraManager IO-bağımlı olduğu için unit test yazılmadı — TESTS_GUIDE kuralı)
+```
+
+---
+
+## [Aşama 7] — Dosya Ağacı Paket Yapısına Geçirildi
+
+- **Tarih:** 2026-07-16
+- **Agent:** Claude (Fable 5)
+- **İlgili Sorunlar:** Kök dizin karmaşası (kullanıcı talebi), S07/S08 (modül organizasyonu)
+- **Plan Uyumu:** ⚠️ Planda yoktu — kullanıcı talebiyle eklendi
+
+### Ne Yapıldı
+
+17 Python modülü kök dizinden `game/` paketi altına taşındı (git mv ile,
+geçmiş korundu). Yeni yapı:
+
+```
+python_dnd/
+├── main.py                  Giriş noktası (python main.py aynı çalışır)
+├── game/
+│   ├── core/                Saf mantık: game_state, game_data, game_phase,
+│   │                        combat_manager, inventory_handler, shop_system,
+│   │                        prompt_builder
+│   ├── ai/                  ai_manager
+│   ├── vision/              vision_engine, camera_manager
+│   ├── challenges/          shape_challenge, fist_challenge, dice_challenge
+│   ├── ui/                  ui_renderer, menu_system
+│   ├── audio/               music_manager
+│   └── config/              config_manager
+├── assets/
+│   ├── models/              hand_landmarker.task
+│   └── music/               11 mp3
+├── docs/                    RESTRUCTURE_PLAN, CHANGELOG, PRODUCT_VISION,
+│                            devils_advocate_analysis
+├── tools/                   test_dual_hands.py (manuel test)
+└── tests/                   (değişmedi)
+```
+
+Yol sabitleri güncellendi: model dosyası `assets/models/`, müzik
+`assets/music/`, `game_config.json` ve `.env` proje kökünde kalır
+(üç modülde `_PROJECT_ROOT` üç seviye yukarı hesaplanır).
+
+### Dikkat Edilecekler
+
+- Yeni import biçimi: `from game.core.game_state import GameState` vb.
+- `game/core/` içindekiler birbirini `from game.core import game_data`
+  şeklinde import eder — TAM YOL kullanın, relative import kullanılmadı.
+- `tools/test_dual_hands.py` kendi sys.path bootstrap'ini yapar,
+  `python tools/test_dual_hands.py` ile kökten çalıştırılır.
+- CLAUDE.md'deki dosya yapısı ve belge yolları güncellendi
+  (rehber belgeler artık `docs/` altında).
+
+### Test Sonuçları
+
+```
+$ python -m pytest tests/ -q
+242 passed
+$ python -c "import main"
+SMOKE OK (model/müzik/config yolları doğrulandı)
+```

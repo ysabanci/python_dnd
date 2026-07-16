@@ -396,7 +396,7 @@ Her sorun şu formatta belgelenmiştir:
 
 ### GÜVENLİK
 
-#### - [ ] S13: API Key Düz Metin Olarak Diskte
+#### - [x] S13: API Key Düz Metin Olarak Diskte
 
 - **Konum:** `config_manager.py` satır 62-69, `game_config.json`
 - **Şu An Ne Oluyor:** API anahtarı şifrelenmemiş JSON dosyasında tutuluyor.
@@ -448,7 +448,7 @@ Her sorun şu formatta belgelenmiştir:
 
 ---
 
-#### - [ ] S15: Clipboard Erişimi Platform-Bağımlı ve Şüpheli
+#### - [x] S15: Clipboard Erişimi Platform-Bağımlı ve Şüpheli
 
 - **Konum:** `menu_system.py` satır 26-40
 - **Şu An Ne Oluyor:** PowerShell subprocess ile clipboard okunuyor.
@@ -528,7 +528,7 @@ Her sorun şu formatta belgelenmiştir:
 
 ---
 
-#### - [ ] S18: `requirements.txt` Üst Sınır Yok
+#### - [x] S18: `requirements.txt` Üst Sınır Yok
 
 - **Konum:** `requirements.txt`
 - **Şu An Ne Oluyor:** `opencv-python>=4.8.0` gibi açık uçlu sürümler.
@@ -594,7 +594,7 @@ Her sorun şu formatta belgelenmiştir:
 
 ---
 
-#### - [ ] S22: Kaspersky ve Benzeri Güvenlik Yazılımı Çakışması
+#### - [x] S22: Kaspersky ve Benzeri Güvenlik Yazılımı Çakışması
 
 - **Konum:** `menu_system.py` satır 94-108 (menü kamerası),
   `vision_engine.py` satır 87-109 (oyun kamerası)
@@ -1041,10 +1041,10 @@ düşman yenilgisi → envanter. Her adımda HP doğru mu?
 
 ### AŞAMA 6: Güvenlik ve Platform (Ertelenen İşler)
 
-- [ ] 6.1 — `python-dotenv` ekle, API key'i `.env` dosyasına taşı (S13) — Risk: Orta
-- [ ] 6.2 — `pyperclip` ekle, clipboard fonksiyonunu değiştir (Kaspersky sorunu) (S15, S22) — Risk: Düşük
-- [ ] 6.3 — Kamera paylaşımı (menü ↔ oyun tek kamera) (S22) — Risk: Orta
-- [ ] 6.4 — `requirements.txt`'e `python-dotenv` ve `pyperclip` ekle (S18) — Risk: Çok düşük
+- [x] 6.1 — `python-dotenv` ekle, API key'i `.env` dosyasına taşı (S13) — Risk: Orta
+- [x] 6.2 — `pyperclip` ekle, clipboard fonksiyonunu değiştir (Kaspersky sorunu) (S15, S22) — Risk: Düşük
+- [x] 6.3 — Kamera paylaşımı (menü ↔ oyun tek kamera) (S22) — Risk: Orta
+- [x] 6.4 — `requirements.txt`'e `python-dotenv` ve `pyperclip` ekle (S18) — Risk: Çok düşük
 
 ---
 
@@ -1103,3 +1103,19 @@ Bu senaryo her AŞAMA sonunda tekrarlanmalıdır.
 > ilgili bölüm `[TAMAMLANDI]` olarak işaretlenmeli ve karşılaşılan
 > ek sorunlar eklenmelidir. Yeni bir model veya kişi projeye
 > dahil olduğunda ilk okuması gereken belge budur.
+
+---
+
+## KAPANIŞ NOTU (2026-07-16)
+
+**Restructure süreci TAMAMLANDI.** Aşama 0-6'nın tamamı bitti. Ek olarak:
+
+- **Hotfix:** Aşama 5.3'ten kalan `game_phase.py` SyntaxError'ı düzeltildi
+  (oyun 2026-06-24'ten beri açılamıyordu — detay: CHANGELOG "Denetim + Hotfix").
+- **Aşama 7 (plan dışı, kullanıcı talebi):** Dosya ağacı `game/` paket
+  yapısına geçirildi. Yeni yapı için CHANGELOG "Aşama 7" girişine bakın.
+
+**Bundan sonrası bu belgenin kapsamı DIŞINDADIR.** Yön için
+`docs/PRODUCT_VISION.md` okunmalı: sıradaki işler dağıtım (README,
+kurulum), V1 efekt katmanı ve oyuncu testi. S03/S06 prompt sorunları
+AI eval altyapısı kurulana kadar bilinçli olarak açık bırakılmıştır (G03).

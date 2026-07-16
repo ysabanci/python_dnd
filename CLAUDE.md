@@ -1,8 +1,9 @@
 # CLAUDE.md — python_dnd Projesi Ajan Rehberi
 
-> **Son güncelleme:** 2026-06-19
-> **Test durumu:** 237 test, 237 passed
-> **Mevcut aşama:** Aşama 5 tamamı tamamlandı — Aşama 6 sırada
+> **Son güncelleme:** 2026-07-16
+> **Test durumu:** 242 test, 242 passed
+> **Mevcut aşama:** Restructure TAMAMLANDI (Aşama 0-6 + dosya ağacı).
+> Sırada: dağıtım + V1 efekt katmanı (bkz. PRODUCT_VISION.md Bölüm 6).
 
 ---
 
@@ -10,60 +11,65 @@
 
 Webcam kontrollü, el hareketleriyle oynanan bir D&D rol yapma oyunu.
 - **Giriş:** El ile havada seçenek seçme (parmak izleme)
-- **Motor:** Herhangi bir AI (hikaye üretimi)
+- **Motor:** Herhangi bir AI (hikaye üretimi, litellm üzerinden)
 - **Savaş:** Geometrik şekil çizme / yumruk challenge'ları
 - **Dil:** Python 3.13, pygame + OpenCV + MediaPipe
 
+**Nihai hedef bu değil:** Proje, oyuncunun kendisini ekranda kahraman olarak
+gördüğü webcam-AR RPG'ye evrilecek. Görev almadan önce
+`docs/PRODUCT_VISION.md` oku — vizyon merdiveni (V1-V4) ve ajan kuralları
+(G01-G06) orada.
+
 ---
 
-## 2. NE YAPIYORUZ?
-
-Projenin kodunu **hiçbir özelliği değiştirmeden** yeniden yapılandırıyoruz (refactoring).
-God Object'ler (`main.py` 1304 satır, `game_state.py` 1020 satır) parçalanıyor.
-
-### Rehber Belgeler
+## 2. REHBER BELGELER
 
 | Belge | Yol | Ne İçin |
 |-------|-----|---------|
-| **PRODUCT_VISION.md** | `e:\Projeler\python_dnd\PRODUCT_VISION.md` | Ürün vizyonu ve yön. Eleştirel durum tespiti (E01-E06), vizyon merdiveni (V1-V4), pazar notları (P01-P06), ajan kuralları (G01-G06). **Görev almadan önce oku.** |
-| **RESTRUCTURE_PLAN.md** | `e:\Projeler\python_dnd\RESTRUCTURE_PLAN.md` | Ana yol haritası. Sorun kataloğu (S01-S22), bağımlılık haritası, aşamalar. |
-| **CHANGELOG.md** | `e:\Projeler\python_dnd\CHANGELOG.md` | Yapılan her değişikliğin teknik detayı. Şablon dahil. |
-| **TESTS_GUIDE.md** | `e:\Projeler\python_dnd\tests\TESTS_GUIDE.md` | Test yazma kuralları ve örnekler. |
+| **PRODUCT_VISION.md** | `docs/PRODUCT_VISION.md` | Ürün vizyonu ve yön. Eleştiriler (E01-E06), vizyon merdiveni (V1-V4), pazar notları (P01-P06), ajan kuralları (G01-G06). **Görev almadan önce oku.** |
+| **RESTRUCTURE_PLAN.md** | `docs/RESTRUCTURE_PLAN.md` | Tamamlanmış refactoring yol haritası. Sorun kataloğu (S01-S22) referans olarak hala geçerli. |
+| **CHANGELOG.md** | `docs/CHANGELOG.md` | Yapılan her değişikliğin teknik detayı. Şablon başta. |
+| **TESTS_GUIDE.md** | `tests/TESTS_GUIDE.md` | Test yazma kuralları ve örnekler. |
 
 ---
 
-## 3. MEVCUT DOSYA YAPISI
+## 3. DOSYA YAPISI (2026-07-16 sonrası)
 
 ```
 python_dnd/
-├── main.py                 Ana oyun döngüsü + faz yönlendirme (~1060 satır)
-├── game_state.py            Durum yönetimi + karakter + mesaj geçmişi (~810 satır)
-├── game_data.py             [YENİ] Statik sözlükler (class/weapon/stat verileri)
-├── shop_system.py           [YENİ] ShopSystem sınıfı (dükkan mantığı)
-├── prompt_builder.py        [YENİ] PromptBuilder sınıfı (AI prompt üretimi)
-├── combat_manager.py        [YENİ] CombatManager sınıfı (savaş hesaplamaları)
-├── inventory_handler.py     [YENİ] InventoryHandler sınıfı (envanter hit-test/dwell)
-├── game_phase.py            [YENİ] GamePhase Enum (faz geçişleri)
-├── ai_manager.py            AI ile iletişim (litellm)
-├── ui_renderer.py           Tüm çizim işlemleri (~900 satır, değişmez)
-├── vision_engine.py         El takibi (MediaPipe)
-├── shape_challenge.py       Şekil çizme challenge
-├── fist_challenge.py        Yumruk challenge
-├── dice_challenge.py        Zar challenge
-├── music_manager.py         Müzik sistemi
-├── config_manager.py        Ayar yönetimi
-├── menu_system.py           Ana menü sistemi
-└── tests/
-    ├── conftest.py           Paylaşılan fixture'lar
-    ├── test_game_state.py    46 test
-    ├── test_ai_parse.py      9 test
-    ├── test_config.py        9 test
-    ├── test_snapshots.py     10 test (characterization)
-    ├── test_shop.py          17 test
-    ├── test_prompts.py       55 test
-    ├── test_combat.py        63 test
-    └── test_inventory.py     23 test
+├── main.py                  Giriş noktası + DnDGame (oyun döngüsü, faz yönlendirme)
+├── game/
+│   ├── core/                SAF MANTIK (UI/IO yok, hepsi test edilebilir)
+│   │   ├── game_state.py        Durum + karakter + mesaj geçmişi
+│   │   ├── game_data.py         Statik sözlükler (class/weapon/stat)
+│   │   ├── game_phase.py        GamePhase Enum
+│   │   ├── combat_manager.py    Savaş hesaplama motoru
+│   │   ├── inventory_handler.py Envanter hit-test/dwell kararları
+│   │   ├── shop_system.py       Dükkan mantığı
+│   │   └── prompt_builder.py    AI prompt üretimi (static methods)
+│   ├── ai/ai_manager.py         AI iletişimi (litellm, thread'li)
+│   ├── vision/
+│   │   ├── vision_engine.py     El takibi (MediaPipe HandLandmarker)
+│   │   └── camera_manager.py    Paylaşılan kamera (S22 fix)
+│   ├── challenges/              shape / fist / dice challenge'ları
+│   ├── ui/
+│   │   ├── ui_renderer.py       Tüm oyun çizimleri (~900 satır)
+│   │   └── menu_system.py       Ana menü + ayarlar
+│   ├── audio/music_manager.py   Müzik (pygame mixer)
+│   └── config/config_manager.py Ayarlar (JSON) + API key (.env)
+├── assets/
+│   ├── models/hand_landmarker.task
+│   └── music/*.mp3
+├── docs/                    Rehber belgeler (yukarıdaki tablo)
+├── tools/test_dual_hands.py Manuel çift el testi
+├── tests/                   242 test (8 dosya + conftest)
+├── game_config.json         (gitignore'da — key İÇERMEZ artık)
+├── .env                     (gitignore'da — API_KEY burada)
+└── venv/                    Sanal ortam (.venv eski/bayat — kullanma)
 ```
+
+**Import biçimi:** `from game.core.game_state import GameState` — tam yol,
+relative import kullanılmaz. `python main.py` kökten çalışır.
 
 ---
 
@@ -71,26 +77,22 @@ python_dnd/
 
 | Aşama | Açıklama | Durum |
 |-------|----------|-------|
-| 0 | Safety Net (pytest altyapısı, 68 test) | ✅ Tamamlandı |
-| 1 | Bağımsız küçük düzeltmeler (S01, S04, S10, S11, S14) | ✅ Tamamlandı |
-| 2 | Veri ayrıştırma → `game_data.py`, `shop_system.py` | ✅ Tamamlandı |
-| 3 | Prompt ayrıştırma → `prompt_builder.py` | ✅ Tamamlandı |
-| 4 | Savaş yöneticisi → `combat_manager.py` + S02, S05 fix | ✅ Tamamlandı (9/9) |
-| 5.1 | Envanter → `inventory_handler.py` | ✅ Tamamlandı |
-| 5.2 | `reset()` anti-pattern düzeltme (S12) | ✅ Tamamlandı |
-| 5.3 | Faz geçişlerini Enum'a çevir (S09) | ✅ Tamamlandı |
-| 5.4 | Çift `draw_inventory` çağrısı optimize (Performans) | ✅ Tamamlandı |
+| 0-5 | Test altyapısı, küçük fix'ler, veri/prompt/savaş/envanter ayrıştırma, Enum | ✅ (detay: RESTRUCTURE_PLAN) |
+| Hotfix | game_phase.py SyntaxError (oyun 3 hafta açılamamıştı!) + ölü kod | ✅ 2026-07-16 |
+| 6.1 | API key → `.env` + python-dotenv + otomatik migration (S13) | ✅ 2026-07-16 |
+| 6.2 | Clipboard → pyperclip (S15) | ✅ 2026-07-16 |
+| 6.3 | Kamera paylaşımı: CameraManager, menü ↔ oyun tek kamera (S22) | ✅ 2026-07-16 |
+| 6.4 | requirements.txt: dotenv + pyperclip (S18) | ✅ 2026-07-16 |
+| 7 | Dosya ağacı `game/` paket yapısına geçirildi | ✅ 2026-07-16 |
 
----
+## 5. SIRADAKI GÖREVLER (PRODUCT_VISION Bölüm 6)
 
-## 5. SIRADAKI GÖREVLER
-
-### Sıradaki görevler: Aşama 6 — Güvenlik ve Platform
-
-- 6.1: `.env` + `python-dotenv` (API key güvenliği)
-- 6.2: `pyperclip` (clipboard erişimi)
-- 6.3: Kamera paylaşımı (menü ↔ oyun)
-- 6.4: `requirements.txt` güncelleme
+1. **Dağıtım:** README (kurulum + oynanış), model dosyası otomatik indirme,
+   mümkünse PyInstaller tek-exe (E05)
+2. **V1 efekt katmanı:** parmak izini takip eden büyü efektleri, hasar
+   flaşları (mevcut stack ile)
+3. **60 saniyelik oynanış videosu** + 5 yabancıyla oyuncu testi
+4. (Aday) AI eval altyapısı — prompt'ların güvenle değiştirilebilmesi için (G03)
 
 ---
 
@@ -98,151 +100,129 @@ python_dnd/
 
 ### 🔴 DOKUNMA LİSTESİ
 
-1. **Türkçe prompt'lar** — Prompt metnini DEĞİŞTİRME. Bir kelimelik değişiklik bile
-   tüm oyun mekaniğini bozabilir. Sadece dosya taşıma kabul edilir.
+1. **Türkçe prompt'lar** — Prompt metnini DEĞİŞTİRME (eval altyapısı yokken — G03).
 2. **Hasar formülleri** — Sayısal değerler (30-50 arası, 1.5x çarpan) korunmalı.
-3. **Challenge süreleri** — `DRAW_TIME`, `COUNTDOWN_TIME`, `ACTIVE_DURATION` sabitleri.
-4. **Doğruluk hesaplama** — `shape_challenge.py`'deki formül.
+3. **Challenge süreleri** — `DRAW_TIME`, `COUNTDOWN_TIME`, `ACTIVE_DURATION`.
+4. **Doğruluk hesaplama** — `game/challenges/shape_challenge.py`'deki formül.
 5. **El takip parametreleri** — Smoothing katsayıları, güven eşikleri.
-6. **UI layout sabitleri** — `ui_renderer.py:53-110`.
+6. **UI layout sabitleri** — `game/ui/ui_renderer.py`.
 
 ### 🟡 İŞ AKIŞI KURALLARI
 
-1. **Önce araştır, sonra yap:** Her görevden önce bağımlılık haritasına bak.
-   İlgili dosyaları oku. Olası yan etkileri listele.
-2. **Test kır, commit'leme:** Her değişiklik sonrası `python -m pytest tests/ -v` çalıştır.
-3. **CHANGELOG'a yaz:** Her görev sonrası CHANGELOG.md'ye detaylı giriş ekle.
-   Şablon CHANGELOG.md'nin başında var.
-4. **RESTRUCTURE_PLAN'ı güncelle:** Tamamlanan görevleri `[x]` olarak işaretle.
-   Çözülen sorunları da `[x]` olarak işaretle.
+1. **Önce araştır, sonra yap:** İlgili dosyaları oku, yan etkileri listele.
+2. **Test + SMOKE IMPORT:** Her değişiklik sonrası İKİSİ DE zorunlu:
+   ```
+   python -m pytest tests/ -q
+   python -c "import main"
+   ```
+   ⚠️ Ders: Aşama 5.3'te ajan dosyaya çöp bıraktı, 237 test yeşil kaldı ama
+   oyun 3 hafta açılamadı. Testler saf mantığı korur, oyunun açıldığını
+   KANITLAMAZ (PRODUCT_VISION E01).
+3. **Dosya sonlarını kontrol et:** Yazdığın dosyanın son satırlarında araç
+   çağrısı artığı/kapanmamış string olmadığından emin ol.
+4. **CHANGELOG'a yaz:** `docs/CHANGELOG.md`'ye şablonla giriş ekle.
+5. **PRODUCT_VISION kuralları:** G01 (oyuncu-görünür değer önceliği),
+   G02 (render/mantık ayrımı), G04 (hata-affeden stilizasyon),
+   G05 (kurulum yükü sorusu), G06 (vizyon basamağı atlanmaz).
 
 ### 🟢 TEST YAZMA KURALLARI
 
 - Yeni modül → yeni test dosyası (`test_<modül>.py`)
-- `conftest.py`'deki `game_state` fixture'ı kullan
-- Deterministic testler için `random.seed(42)` kullan
-- UI/IO bağımlı kodu test ETME — sadece saf mantığı test et
+- `conftest.py`'deki `game_state` fixture'ını kullan
+- Deterministic testler için `random.seed(42)`
+- UI/IO bağımlı kodu test ETME — sadece saf mantık
+- Config testlerinde `isolated_config` fixture'ı kullan (gerçek `.env`'i korur)
 - Detaylar: `tests/TESTS_GUIDE.md`
 
 ---
 
-## 7. MİMARİ BİLGİ (SORU İŞARETLERİ İÇİN)
+## 7. MİMARİ BİLGİ
 
-### Modül Sorumlulukları
+### Delegasyon Deseni (G02 — V3 motor ayrışmasının sigortası)
 
-| Modül | Rol | Bağımlılıklar |
-|-------|-----|---------------|
-| `main.py` | Oyun döngüsü, faz yönlendirme, UI/IO wrapper | Her şeye bağlı |
-| `game_state.py` | Oyun durumu, karakter, mesaj geçmişi | game_data, shop_system, prompt_builder |
-| `combat_manager.py` | Saf savaş hesaplama motoru | game_data (sadece veri) |
-| `inventory_handler.py` | Saf hit-test/dwell karar motoru | Hiçbir şeye bağlı değil |
-| `prompt_builder.py` | Saf prompt üretimi (static methods) | Hiçbir şeye bağlı değil |
-| `shop_system.py` | Dükkan mantığı | Hiçbir şeye bağlı değil |
-| `game_data.py` | Statik sözlükler | Hiçbir şeye bağlı değil |
-| `game_phase.py` | Faz Enum tanımları | Hiçbir şeye bağlı değil |
-
-### Delegasyon Deseni
-
-main.py hiçbir zaman doğrudan hesaplama yapmaz. Her iş ilgili modüle delege edilir:
+main.py hiçbir zaman doğrudan hesaplama yapmaz; alt modüller saf hesaplama
+yapıp sonuç döndürür. Side-effect'ler (state değişikliği, cv2.imshow) her
+zaman main.py'de kalır.
 
 ```
-main.py (wrapper) → combat_manager.py (hesaplama)
-main.py (wrapper) → inventory_handler.py (karar)
-game_state.py     → shop_system.py (dükkan)
-game_state.py     → prompt_builder.py (prompt)
+main.py (wrapper)      → game/core/combat_manager.py (hesaplama)
+main.py (wrapper)      → game/core/inventory_handler.py (karar)
+game/core/game_state   → game/core/shop_system.py (dükkan)
+game/core/game_state   → game/core/prompt_builder.py (prompt)
 ```
 
-Side-effect'ler (state değişikliği, UI çağrıları, cv2.imshow) **her zaman main.py'de** kalır.
-Alt modüller saf hesaplama yapar ve sonucu döndürür.
+### API Key Akışı (S13 fix sonrası)
+
+```
+Okuma:  .env dosyası (API_KEY) > OS ortam değişkeni
+Yazma:  menü → save_config() → key .env'e, kalanı game_config.json'a
+Migration: eski JSON'da key varsa ilk load_config()'ta .env'e taşınır
+```
+
+### Kamera Akışı (S22 fix sonrası)
+
+```
+main() → CameraManager (TEK kamera) → MenuSystem + DnDGame/HandTracker
+Aynı index = yeniden açılmaz (Kaspersky bildirimi tetiklenmez)
+HandTracker.release() paylaşılan kamerayı KAPATMAZ (_owns_camera=False)
+```
 
 ### HP Akışı (S02 fix sonrası)
 
 ```
 AI yanıtı → update_from_ai_response()
   ├── hp_degisim JSON → modify_hp()     ← TEK HP KAYNAĞI
-  └── [HP:-10] tag   → sadece temizlenir, HP'ye UYGULANMAZ
+  └── [HP:-10] tag   → sadece temizlenir, uygulanmaz
 ```
 
 ### Dodge vs Savunma (S05 fix sonrası)
 
 ```
-DEX yeterli → combat.dodged = True       → "DEX DODGE!" feedback
-Savunma başarılı → combat.defense_blocked → "MUKEMMEL SAVUNMA!" feedback
+DEX yeterli → combat.dodged = True         → "DEX DODGE!"
+Savunma başarılı → combat.defense_blocked  → "MUKEMMEL SAVUNMA!"
 UI: is_blocked_visual = dodged OR defense_blocked
 ```
 
-### reset() (S12 fix sonrası)
+### Bilinen Yarım Özellikler (denetim bulgusu, 2026-07-16)
 
-```python
-# ESKİ (anti-pattern):
-def reset(self): self.__init__(Character())  # YANLIŞ
-
-# YENİ:
-def reset(self):
-    self.character = Character()
-    self._reset_to_defaults()  # __init__ ile aynı yardımcı
-```
+- `game_state.py`: `get_effective_max_hp` / `get_hp_bonus_from_equipment` /
+  `get_stat_breakdown` hiçbir yerden çağrılmıyor → **zırh HP bonusu fiilen
+  çalışmıyor**. Tamamla veya sil — dokunmadan önce kullanıcıya sor.
+- `GameState._api_error` yazılıyor ama okunmuyor (UI hata gösterimi yarım).
 
 ---
 
 ## 8. SORUN KATALOĞU DURUMU
 
 ### Çözülenler ✅
-| ID | Sorun | Çözüm Aşaması |
-|----|-------|---------------|
-| S01 | `draw_buttons` parametre hatası | Aşama 1.1 |
-| S02 | HP çift uygulama | Aşama 4.8 |
-| S04 | `extra_turn_active` sıfırlanmıyor | Aşama 1.3 |
-| S05 | Dodge/savunma karışıklığı | Aşama 4.9 |
-| S10 | Savaş aksiyon string'leri dağınık | Aşama 1.4 |
-| S11 | `_inv_hovered_*` attribute eksik | Aşama 1.2 |
-| S12 | `reset()` anti-pattern | Aşama 5.2 |
-| S14 | `ast.literal_eval` güvenlik riski | Aşama 1.5 |
+S01, S02, S04, S05, S10, S11, S12, S14 (Aşama 1-5) + **S13, S15, S18, S22** (Aşama 6)
 
 ### Kısmen Çözülenler 🟡
 | ID | Sorun | Durum |
 |----|-------|-------|
-| S07 | main.py God Object | Büyük kısmı çözüldü (combat, inventory, faz Enum ayrıldı). |
-| S08 | game_state.py God Object | Büyük kısmı çözüldü (data, shop, prompt ayrıldı). |
-| S09 | State machine yok | İlk adım tamamlandı (Enum). Full State Pattern ileride değerlendirilecek. |
-| S16 | Unit test eksik | 237 test var artık. CI/CD yok (S17). |
+| S07/S08 | God Object'ler | Büyük kısmı ayrıştırıldı; main.py ~950, game_state ~810 satır |
+| S09 | State machine | Enum var; full State Pattern yapılmayacak (E02/G01 gereği gündemden kalktı) |
+| S16 | Test eksikliği | 242 test var; kapsam sınırı için E01'e bak |
 
 ### Çözülmeyenler ⬜
-| ID | Sorun | Planlanan Aşama |
-|----|-------|-----------------|
-| S03 | Savaş modunda AI prompt çelişkisi | Prompt dokunulmadığı için ertelendi |
-| S06 | Ganimet anahtar kelime çakışması | Prompt dokunulmadığı için ertelendi |
-| S13 | API key düz metin | Aşama 6.1 |
-| S15 | Clipboard platform bağımlı | Aşama 6.2 |
+| ID | Sorun | Not |
+|----|-------|-----|
+| S03, S06 | Prompt sorunları | AI eval altyapısı kurulana kadar bilinçli açık (G03) |
 | S17 | CI/CD yok | Ertelendi |
-| S18 | requirements.txt üst sınır | Kısmen çözüldü (Aşama 0) |
-| S19 | hand_landmarker indirme talimatı yok | Ertelendi |
-| S20 | Windows'a sıkı bağımlılık | Ertelendi |
-| S21 | Kamera olmadan oynanamaz | Ertelendi |
-| S22 | Kaspersky çakışması | Aşama 6.2-6.3 |
+| S19 | Model indirme talimatı | Sıradaki "dağıtım" işinin parçası (E05) |
+| S20 | Windows bağımlılığı | pyperclip ile azaldı; kalan: kamera/pencere davranışı |
+| S21 | Kamera zorunlu | Mouse fallback — PRODUCT_VISION'da ürün-kritik olarak işaretli |
 
 ---
 
 ## 9. KULLANICININ BEKLENTİLERİ
 
-### Çalışma Tarzı
-- Kullanıcı görevleri **aşama aşama** veriyor
-- Her görevden önce **bağımlılık analizi + olası hata kontrolü** yapılmasını istiyor
-- Sonrasında **CHANGELOG ve RESTRUCTURE_PLAN güncellenmesini** bekliyor
-- **Temkinli** çalışılmasını istiyor — "sorunsuz iş istiyorum"
-
-### Dil
-- Kullanıcı Türkçe konuşuyor
-- Kod yorumları Türkçe
-- Commit mesajları / changelog Türkçe
-- Prompt'lar Türkçe (dokunma!)
-
-### Kullanıcının Vermediği Ama Bilmen Gereken
-
-- API key'i geçersiz olabilir (`INVALID_ARGUMENT` hatası) — bu bizim sorunumuz değil
-- Kamera gerekli (webcam) — kamera olmadan oyun çalışmaz
-- Oyun `pygame` ile çalışır ama pencere `cv2.imshow` ile açılır (garip ama çalışıyor)
-- `venv` klasörü `e:\Projeler\python_dnd\venv` altında
+- Görevler **aşama aşama**; önce bağımlılık analizi, sonra iş, sonra belge güncelleme
+- **Temkinli** çalışma — "sorunsuz iş istiyorum"
+- Dil: her şey Türkçe (kod yorumları, commit, changelog). Prompt'lara dokunma.
+- Kamera gerekli; pencere cv2.imshow ile açılır (prototip mimari — E03)
+- Sanal ortam: `venv/` (`.venv/` bayat bir kopya, KULLANMA)
+- API key `.env`'de; geçersiz olabilir (`INVALID_ARGUMENT`) — bizim sorunumuz değil
 
 ---
 
@@ -252,49 +232,19 @@ def reset(self):
 # Sanal ortamı aktive et
 .\venv\Scripts\activate
 
-# Testleri çalıştır
-python -m pytest tests/ -v
+# Testler + smoke import (her değişiklik sonrası İKİSİ DE)
+python -m pytest tests/ -q
+python -c "import main"
 
 # Oyunu başlat (kamera gerekli)
 python main.py
-```
 
----
-
-## 11. CHANGELOG YAZIM ŞABLONU
-
-Her görev tamamlandığında CHANGELOG.md'ye şu formatta ekleme yap:
-
-```markdown
-## [Aşama X.Y] — Görev Başlığı
-
-- **Tarih:** YYYY-MM-DD
-- **Agent:** (senin adın)
-- **İlgili Sorunlar:** SXX (sorun açıklaması)
-- **Plan Uyumu:** ✅ veya ⚠️
-
-### Ne Yapıldı
-(1-2 paragraf açıklama)
-
-### Sorunun Anatomisi
-(varsa eski davranış/yeni davranış karşılaştırması)
-
-### Çözüm
-(kod değişikliği özeti, diff veya snippet)
-
-### Dosya Değişiklikleri
-| Dosya | Durum | Değişiklik |
-|-------|-------|-----------|
-
-### Test Sonuçları
-```
-$ python -m pytest tests/ -v
-============================= XXX passed in X.XXs =============================
-```
+# Manuel çift el testi
+python tools/test_dual_hands.py
 ```
 
 ---
 
 > **Son not:** Bu dosya her büyük değişiklikten sonra güncellenmelidir.
-> Yeni ajan, önce bu dosyayı oku → sonra RESTRUCTURE_PLAN.md'ye bak →
+> Yeni ajan: önce bu dosya → sonra docs/PRODUCT_VISION.md →
 > sonra kullanıcıya sıradaki görevi sor.
