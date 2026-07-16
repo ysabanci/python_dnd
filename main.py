@@ -40,13 +40,19 @@ class DnDGame:
     SHAPE_TYPES = [ShapeType.TRIANGLE, ShapeType.SQUARE, ShapeType.CIRCLE,
                    ShapeType.RECTANGLE, ShapeType.INFINITY]
 
-    def __init__(self, config: dict = None):
+    def __init__(self, config: dict = None, camera_manager=None):
         self._config = config or load_config()
 
         # ----- Modulleri Baslat -----
         camera_index = self._config.get("camera_index", 0)
         print(f"[*] Kamera baslatiliyor (index={camera_index})...")
-        self.tracker = HandTracker(camera_index=camera_index, dwell_time=2.0)
+
+        # Paylasilan kamera varsa yeniden ACILMAZ (S22 fix — Asama 6.3)
+        shared_capture = None
+        if camera_manager is not None:
+            shared_capture = camera_manager.get(camera_index)
+        self.tracker = HandTracker(camera_index=camera_index, dwell_time=2.0,
+                                   capture=shared_capture)
 
         if not self.tracker.camera_available:
             raise RuntimeError(
@@ -926,33 +932,40 @@ def main():
     print("  WEBCAM KONTROLLU D&D ROL YAPMA OYUNU")
     print("=" * 50)
 
-    while True:
-        # ---- ANA MENU ----
-        from menu_system import MenuSystem
-        menu = MenuSystem()
-        config = menu.run()
+    # Kamera TEK BIR YERDE acilir, menu ve oyun arasinda paylasilir (S22).
+    from camera_manager import CameraManager
+    camera = CameraManager()
 
-        if config.get("_action") == "exit":
-            print("[*] Oyundan cikiliyor...")
-            break
+    try:
+        while True:
+            # ---- ANA MENU ----
+            from menu_system import MenuSystem
+            menu = MenuSystem(camera_manager=camera)
+            config = menu.run()
 
-        # ---- OYUNU BASLAT ----
-        try:
-            game = DnDGame(config=config)
-            game.run()
-        except KeyboardInterrupt:
-            print("\n[*] Oyun kullanici tarafindan durduruldu.")
-        except Exception as e:
-            print(f"\n[!] Hata: {e}")
-            # Hatadan sonra menuye don (crash etmesin)
-            import traceback
-            traceback.print_exc()
+            if config.get("_action") == "exit":
+                print("[*] Oyundan cikiliyor...")
+                break
+
+            # ---- OYUNU BASLAT ----
+            try:
+                game = DnDGame(config=config, camera_manager=camera)
+                game.run()
+            except KeyboardInterrupt:
+                print("\n[*] Oyun kullanici tarafindan durduruldu.")
+            except Exception as e:
+                print(f"\n[!] Hata: {e}")
+                # Hatadan sonra menuye don (crash etmesin)
+                import traceback
+                traceback.print_exc()
+                print("\n[*] Ana menuye donuluyor...")
+                continue
+
+            # Oyun bittiyse menuye don
             print("\n[*] Ana menuye donuluyor...")
             continue
-
-        # Oyun bittiyse menuye don
-        print("\n[*] Ana menuye donuluyor...")
-        continue
+    finally:
+        camera.release()
 
 
 if __name__ == "__main__":

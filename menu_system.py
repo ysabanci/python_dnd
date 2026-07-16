@@ -60,7 +60,13 @@ class MenuSystem:
     FONT_B = cv2.FONT_HERSHEY_DUPLEX
     DWELL = 2.0  # El ile secim suresi
 
-    def __init__(self):
+    def __init__(self, camera_manager=None):
+        """
+        Args:
+            camera_manager: Paylasilan CameraManager (S22 fix — Asama 6.3).
+                Verilirse menu kendi kamerasini ACMAZ; yoneticiden alir ve
+                cikarken KAPATMAZ (oyun ayni kamerayi kullanmaya devam eder).
+        """
         self.config = load_config()
         self.state = "main"
         self.running = True
@@ -76,7 +82,8 @@ class MenuSystem:
         self._buttons: Dict[str, Tuple[int, int, int, int]] = {}
         self._custom_model_mode = False
 
-        # Kamera (opsiyonel arka plan)
+        # Kamera (opsiyonel arka plan) — paylasilan yonetici varsa oradan
+        self._cam_mgr = camera_manager
         self._cap = None
         self._cam_ok = False
         self._cam_w = 1280
@@ -89,6 +96,21 @@ class MenuSystem:
 
     def _try_camera(self):
         idx = self.config.get("camera_index", 0)
+
+        # Paylasilan kamera yoneticisi varsa oradan al (yeniden acilmaz)
+        if self._cam_mgr is not None:
+            cap = self._cam_mgr.get(idx)
+            if cap is not None:
+                self._cam_w = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+                self._cam_h = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+                self._cap = cap
+                self._cam_ok = True
+            else:
+                self._cap = None
+                self._cam_ok = False
+            return
+
+        # Eski davranis: kendi kamerasini ac
         try:
             cap = cv2.VideoCapture(idx)
             if cap.isOpened():
@@ -143,7 +165,9 @@ class MenuSystem:
             if self.result is not None:
                 break
 
-        if self._cap is not None:
+        # Paylasilan kamera KAPATILMAZ — oyun kullanmaya devam edecek (S22).
+        # Sadece menunun kendi actigi kamera kapatilir.
+        if self._cam_mgr is None and self._cap is not None:
             self._cap.release()
         cv2.destroyWindow(self.WINDOW_NAME)
         cv2.waitKey(1)
@@ -524,7 +548,17 @@ class MenuSystem:
 
     def _test_camera(self):
         idx = self.config.get("camera_index", 0)
-        # Menu kamerasini kapat (ayni kamerayi test ediyorsak catisma olur)
+
+        # Paylasilan yonetici varsa: ayni index zaten acikken yeniden ACMADAN
+        # test edilir (Kaspersky bildirimi tetiklenmez) — S22 fix.
+        if self._cam_mgr is not None:
+            ok, msg = self._cam_mgr.test(idx)
+            self._cam_msg = msg
+            self._cam_msg_t = time.time()
+            self._try_camera()  # Menu arka planini guncel kameraya bagla
+            return
+
+        # Eski davranis: kapat, test et, yeniden ac
         if self._cap is not None:
             self._cap.release()
             self._cap = None

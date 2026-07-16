@@ -70,7 +70,7 @@ class HandTracker:
     SMOOTHING_FACTOR = 0.45
 
     def __init__(self, camera_index: int = 0, dwell_time: float = 2.0,
-                 num_hands: int = 1):
+                 num_hands: int = 1, capture=None):
         """
         HandTracker sinifini baslatir.
 
@@ -78,35 +78,54 @@ class HandTracker:
             camera_index: Kullanilacak kamera indeksi (varsayilan: 0).
             dwell_time: Secim icin gereken bekleme suresi, saniye (varsayilan: 2.0).
             num_hands: Algilanacak el sayisi (1 veya 2, varsayilan: 1).
+            capture: Onceden acilmis, paylasilan cv2.VideoCapture nesnesi
+                (CameraManager'dan gelir — S22 fix). Verilirse kamera
+                YENIDEN ACILMAZ ve release() bu kamerayi KAPATMAZ.
         """
         self.dwell_time = dwell_time
         self.camera_available = False
         self.num_hands = max(1, min(2, num_hands))
+        # Paylasilan kamera verildiyse sahiplik bizde degil
+        self._owns_camera = capture is None
 
         # ----- Kamera Kurulumu -----
-        try:
-            self.cap = cv2.VideoCapture(camera_index)
-            if not self.cap.isOpened():
-                print(f"[!] Kamera acilamadi (index={camera_index}).")
-                self.frame_width = 1280
-                self.frame_height = 720
-            else:
-                self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1280)
-                self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)
-                # FPS iyilestirmesi
-                self.cap.set(cv2.CAP_PROP_FPS, 30)
-                # Tampon boyutunu kucult (gecikme azaltma)
-                self.cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
-
+        if capture is not None:
+            # Paylasilan kamera (CameraManager yonetiyor)
+            self.cap = capture
+            if self.cap.isOpened():
                 self.frame_width = int(self.cap.get(cv2.CAP_PROP_FRAME_WIDTH))
                 self.frame_height = int(self.cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
                 self.camera_available = True
-                print(f"[*] Kamera cozunurlugu: {self.frame_width}x{self.frame_height}")
-        except Exception as e:
-            print(f"[!] Kamera hatasi: {e}")
-            self.cap = None
-            self.frame_width = 1280
-            self.frame_height = 720
+                print(f"[*] Paylasilan kamera kullaniliyor: "
+                      f"{self.frame_width}x{self.frame_height}")
+            else:
+                print("[!] Paylasilan kamera acik degil.")
+                self.frame_width = 1280
+                self.frame_height = 720
+        else:
+            try:
+                self.cap = cv2.VideoCapture(camera_index)
+                if not self.cap.isOpened():
+                    print(f"[!] Kamera acilamadi (index={camera_index}).")
+                    self.frame_width = 1280
+                    self.frame_height = 720
+                else:
+                    self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1280)
+                    self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)
+                    # FPS iyilestirmesi
+                    self.cap.set(cv2.CAP_PROP_FPS, 30)
+                    # Tampon boyutunu kucult (gecikme azaltma)
+                    self.cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
+
+                    self.frame_width = int(self.cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+                    self.frame_height = int(self.cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+                    self.camera_available = True
+                    print(f"[*] Kamera cozunurlugu: {self.frame_width}x{self.frame_height}")
+            except Exception as e:
+                print(f"[!] Kamera hatasi: {e}")
+                self.cap = None
+                self.frame_width = 1280
+                self.frame_height = 720
 
         # ----- MediaPipe HandLandmarker Kurulumu -----
         model_path = os.path.join(
@@ -377,8 +396,12 @@ class HandTracker:
         self._reset_dwell()
 
     def release(self) -> None:
-        """Kamera ve MediaPipe kaynaklarini serbest birakir."""
-        if self.cap is not None and self.cap.isOpened():
+        """MediaPipe kaynaklarini serbest birakir.
+
+        Kamera SADECE bu tracker tarafindan acildiysa kapatilir.
+        Paylasilan kamera (CameraManager) acik birakilir — S22 fix.
+        """
+        if self._owns_camera and self.cap is not None and self.cap.isOpened():
             self.cap.release()
         self.hand_landmarker.close()
 
