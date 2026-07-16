@@ -14,7 +14,7 @@ if PROJECT_ROOT not in sys.path:
     sys.path.insert(0, PROJECT_ROOT)
 
 import pytest
-from game_state import GameState, Character
+from game.core.game_state import GameState, Character
 
 
 @pytest.fixture

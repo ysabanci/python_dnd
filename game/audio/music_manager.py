@@ -6,18 +6,18 @@ Her tema (lokasyon) icin ayri muzik dosyasi yonetir.
 Savas modunda ortak savas muzigi calar, savastan cikinca
 tema muzigine geri doner.
 
-Beklenen dosya yapisi (music/ klasoru):
-  music/karanlik_magara.mp3
-  music/gizemli_orman.mp3
-  music/kaotik_uzay.mp3
-  music/ruhlar_cehennemi.mp3
-  music/sonsuz_col.mp3
-  music/batan_sehir.mp3
-  music/ejderha_yuvasi.mp3
-  music/buzul_sarayi.mp3
-  music/hayalet_kasabasi.mp3
-  music/lanetli_kale.mp3
-  music/savas.mp3
+Beklenen dosya yapisi (assets/music/ klasoru):
+  assets/music/karanlik_magara.mp3
+  assets/music/gizemli_orman.mp3
+  assets/music/kaotik_uzay.mp3
+  assets/music/ruhlar_cehennemi.mp3
+  assets/music/sonsuz_col.mp3
+  assets/music/batan_sehir.mp3
+  assets/music/ejderha_yuvasi.mp3
+  assets/music/buzul_sarayi.mp3
+  assets/music/hayalet_kasabasi.mp3
+  assets/music/lanetli_kale.mp3
+  assets/music/savas.mp3
 """
 
 import os
@@ -67,9 +67,10 @@ class MusicManager:
         self._initialized = False
         self._current_theme: Optional[str] = None
         self._is_battle_playing: bool = False
-        self._music_dir = os.path.join(
-            os.path.dirname(os.path.abspath(__file__)), "music"
-        )
+        # Muzik dosyalari proje kokundeki assets/music/ altindadir
+        _project_root = os.path.dirname(os.path.dirname(
+            os.path.dirname(os.path.abspath(__file__))))
+        self._music_dir = os.path.join(_project_root, "assets", "music")
 
         if not PYGAME_AVAILABLE:
             return

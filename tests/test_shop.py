@@ -11,8 +11,8 @@ import os
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from shop_system import ShopSystem
-import game_data
+from game.core.shop_system import ShopSystem
+from game.core import game_data
 
 
 # ================================================================

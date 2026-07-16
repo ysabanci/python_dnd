@@ -16,7 +16,7 @@ import os
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from game_state import GameState, Character
+from game.core.game_state import GameState, Character
 
 
 def _make_state(

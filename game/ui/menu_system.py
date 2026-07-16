@@ -10,7 +10,7 @@ import numpy as np
 import time
 from typing import Dict, Any, Optional, Tuple
 
-from config_manager import (
+from game.config.config_manager import (
     load_config, save_config, mask_api_key, AVAILABLE_MODELS, DEFAULT_CONFIG
 )
 

@@ -25,7 +25,7 @@ if "litellm" not in sys.modules:
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from ai_manager import AdventureAI
+from game.ai.ai_manager import AdventureAI
 
 
 @pytest.fixture

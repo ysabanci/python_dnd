@@ -7,7 +7,7 @@ aksiyon karar mantığını test eder.
 Aşama 5.1 — RESTRUCTURE_PLAN'a göre.
 """
 
-from inventory_handler import InventoryHandler
+from game.core.inventory_handler import InventoryHandler
 
 
 # ================================================================== #

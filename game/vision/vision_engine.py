@@ -128,13 +128,16 @@ class HandTracker:
                 self.frame_height = 720
 
         # ----- MediaPipe HandLandmarker Kurulumu -----
+        # Model dosyasi proje kokundeki assets/models/ altindadir
+        _project_root = os.path.dirname(os.path.dirname(
+            os.path.dirname(os.path.abspath(__file__))))
         model_path = os.path.join(
-            os.path.dirname(os.path.abspath(__file__)), "hand_landmarker.task"
+            _project_root, "assets", "models", "hand_landmarker.task"
         )
         if not os.path.exists(model_path):
             raise FileNotFoundError(
                 f"Model dosyasi bulunamadi: {model_path}\n"
-                "Lutfen hand_landmarker.task dosyasini proje dizinine indirin."
+                "Lutfen hand_landmarker.task dosyasini assets/models/ dizinine indirin."
             )
 
         options = vision.HandLandmarkerOptions(

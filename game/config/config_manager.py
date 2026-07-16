@@ -17,9 +17,11 @@ from typing import Any, Dict
 
 from dotenv import dotenv_values, set_key
 
-_BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-CONFIG_FILE = os.path.join(_BASE_DIR, "game_config.json")
-ENV_FILE = os.path.join(_BASE_DIR, ".env")
+# game_config.json ve .env proje KOKUNDE tutulur (kullanicinin bulmasi kolay)
+_PROJECT_ROOT = os.path.dirname(os.path.dirname(
+    os.path.dirname(os.path.abspath(__file__))))
+CONFIG_FILE = os.path.join(_PROJECT_ROOT, "game_config.json")
+ENV_FILE = os.path.join(_PROJECT_ROOT, ".env")
 
 # .env içindeki API anahtarı değişkeninin adı
 # (ai_manager.py'deki os.environ fallback'i ile aynı isim)

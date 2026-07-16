@@ -6,7 +6,7 @@ Refactoring sırasında kırılırlarsa, davranış değişmiş demektir.
 """
 
 import pytest
-from game_state import GameState, Character
+from game.core.game_state import GameState, Character
 
 
 # ================================================================

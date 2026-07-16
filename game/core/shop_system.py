@@ -11,7 +11,7 @@ Bu modül saf iş mantığı içerir, UI kodu içermez.
 import random
 from typing import Callable, Dict, List, Optional
 
-import game_data
+from game.core import game_data
 
 
 class ShopSystem:

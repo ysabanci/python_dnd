@@ -13,7 +13,7 @@ import tempfile
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-import config_manager
+from game.config import config_manager
 
 
 # ================================================================

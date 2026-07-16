@@ -12,7 +12,7 @@ import os
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from prompt_builder import PromptBuilder
+from game.core.prompt_builder import PromptBuilder
 
 
 # ================================================================

@@ -9,9 +9,9 @@ Geçmiş çok uzarsa eski mesajları kırpan optimizasyon içerir.
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
 
-import game_data
-from prompt_builder import PromptBuilder
-from shop_system import ShopSystem
+from game.core import game_data
+from game.core.prompt_builder import PromptBuilder
+from game.core.shop_system import ShopSystem
 
 
 @dataclass

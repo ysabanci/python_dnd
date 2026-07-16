@@ -22,7 +22,13 @@ Kontroller:
 
 import cv2
 import numpy as np
-from vision_engine import HandTracker
+import os
+import sys
+
+# tools/ klasorunden dogrudan calistirilabilmesi icin proje kokunu ekle
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from game.vision.vision_engine import HandTracker
 
 
 def main():

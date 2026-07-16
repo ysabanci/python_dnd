@@ -9,7 +9,7 @@ Aşama 4.7 — RESTRUCTURE_PLAN'a göre.
 """
 
 import random
-from combat_manager import CombatManager
+from game.core.combat_manager import CombatManager
 
 
 # ================================================================== #

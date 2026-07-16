@@ -16,18 +16,18 @@ import random
 import cv2
 import numpy as np
 
-from vision_engine import HandTracker, Quadrant
-from game_state import GameState, Character
-from ai_manager import AdventureAI
-from ui_renderer import GameUI
-from shape_challenge import ShapeChallenge, ShapeType
-from fist_challenge import FistChallenge
-from music_manager import MusicManager
-from dice_challenge import DiceChallenge
-from config_manager import load_config
-from combat_manager import CombatManager
-from inventory_handler import InventoryHandler
-from game_phase import GamePhase
+from game.vision.vision_engine import HandTracker, Quadrant
+from game.core.game_state import GameState, Character
+from game.ai.ai_manager import AdventureAI
+from game.ui.ui_renderer import GameUI
+from game.challenges.shape_challenge import ShapeChallenge, ShapeType
+from game.challenges.fist_challenge import FistChallenge
+from game.audio.music_manager import MusicManager
+from game.challenges.dice_challenge import DiceChallenge
+from game.config.config_manager import load_config
+from game.core.combat_manager import CombatManager
+from game.core.inventory_handler import InventoryHandler
+from game.core.game_phase import GamePhase
 
 
 class DnDGame:
@@ -933,13 +933,13 @@ def main():
     print("=" * 50)
 
     # Kamera TEK BIR YERDE acilir, menu ve oyun arasinda paylasilir (S22).
-    from camera_manager import CameraManager
+    from game.vision.camera_manager import CameraManager
     camera = CameraManager()
 
     try:
         while True:
             # ---- ANA MENU ----
-            from menu_system import MenuSystem
+            from game.ui.menu_system import MenuSystem
             menu = MenuSystem(camera_manager=camera)
             config = menu.run()
 
